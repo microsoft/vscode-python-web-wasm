@@ -19,9 +19,8 @@
 	"dependencies": {
 		"@types/path-browserify": "^1.0.0",
 		"@vscode/debugprotocol": "1.57.0",
-		"@vscode/sync-api-client": "0.5.0",
-		"@vscode/sync-api-service": "0.5.0",
-		"@vscode/wasm-wasi": "0.1.0",
+		"@vscode/sync-api-service": "0.6.1",
+		"@vscode/wasm-wasi": "0.6.0",
 		"path-browserify": "^1.0.1"
 	},
 	"devDependencies": {

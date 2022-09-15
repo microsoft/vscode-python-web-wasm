@@ -9,7 +9,7 @@ import { Worker } from 'worker_threads';
 
 import { Launcher } from '../common/launcher';
 import { ServiceConnection } from '@vscode/sync-api-common/node';
-import { APIRequests, ApiService } from '@vscode/sync-api-service';
+import { Requests, ApiService } from '@vscode/sync-api-service';
 
 export class DesktopLauncher implements Launcher {
 
@@ -25,7 +25,7 @@ export class DesktopLauncher implements Launcher {
 	public async run(context: ExtensionContext): Promise<void> {
 		const filename = Uri.joinPath(context.extensionUri, './out/desktop/pythonWasmWorker.js').fsPath;
 		const worker = new Worker(filename);
-		const connection = new ServiceConnection<APIRequests>(worker);
+		const connection = new ServiceConnection<Requests>(worker);
 		const apiService = new ApiService('Python Shell', connection, (rval) => {
 			process.nextTick(() => worker.terminate());
 			this.exitResolveCallback(rval);

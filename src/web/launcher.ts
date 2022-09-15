@@ -7,7 +7,7 @@ import { ExtensionContext, Uri, window } from 'vscode';
 
 import { Launcher } from '../common/launcher';
 import { ServiceConnection } from '@vscode/sync-api-common/browser';
-import { APIRequests, ApiService } from '@vscode/sync-api-service';
+import { Requests, ApiService } from '@vscode/sync-api-service';
 
 export class WebLauncher implements Launcher {
 
@@ -23,7 +23,7 @@ export class WebLauncher implements Launcher {
 	public async run(context: ExtensionContext): Promise<void> {
 		const filename = Uri.joinPath(context.extensionUri, './dist/web/pythonWasmWorker.js').toString();
 		const worker = new Worker(filename);
-		const connection = new ServiceConnection<APIRequests>(worker);
+		const connection = new ServiceConnection<Requests>(worker);
 		const apiService = new ApiService('Python Shell', connection, (rval) => {
 			setTimeout(() => {
 				worker.terminate();

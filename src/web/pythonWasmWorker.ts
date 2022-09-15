@@ -8,10 +8,10 @@ import path from 'path-browserify';
 import { URI } from 'vscode-uri';
 
 import { ClientConnection } from '@vscode/sync-api-common/browser';
-import { ApiClient, APIRequests } from '@vscode/sync-api-client';
+import { ApiClient, Requests } from '@vscode/sync-api-client';
 import { WASI, Options } from '@vscode/wasm-wasi/browser';
 
-const connection = new ClientConnection<APIRequests>(self);
+const connection = new ClientConnection<Requests>(self);
 connection.serviceReady().then(async (_params) => {
 	const name = 'Python Terminal';
 	const apiClient = new ApiClient(connection);
