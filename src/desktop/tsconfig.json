@@ -1,0 +1,19 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"composite": true,
+		"tsBuildInfoFile":"../../out/desktop/compile.tsbuildInfo",
+		"rootDir": ".",
+		"outDir": "../../out/desktop",
+		"lib": [ "es2020"],
+		"types": [
+			"node"
+		]
+	},
+	"include": [
+		"."
+	],
+	"references": [
+		{ "path": "../common/tsconfig.json" }
+	]
+}

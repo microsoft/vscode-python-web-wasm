@@ -1,0 +1,12 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+	},
+	"files": [],
+	"references": [
+		{ "path": "./src/desktop/tsconfig.json" },
+		{ "path": "./src/web/tsconfig.json" }
+	]
+}

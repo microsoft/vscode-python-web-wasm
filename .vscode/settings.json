@@ -1,0 +1,18 @@
+{
+	"task.allowAutomaticTasks": "on",
+
+	"typescript.tsdk": "./node_modules/typescript/lib",
+	"typescript.tsc.autoDetect": "off",
+	"typescript.tsserver.trace": "off",
+	"typescript.tsserver.log": "off",
+
+	"editor.codeActionsOnSave": {
+		"source.fixAll.eslint": true
+	},
+	"eslint.codeActionsOnSave.rules": [
+		"@typescript-eslint/semi",
+		"@typescript-eslint/indent",
+		"!@typescript-eslint/*",
+		"*"
+	]
+}

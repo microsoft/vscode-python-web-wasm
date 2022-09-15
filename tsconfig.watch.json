@@ -1,0 +1,12 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+	},
+	"files": [],
+	"references": [
+		{ "path": "./src/desktop/tsconfig.watch.json" },
+		{ "path": "./src/web/tsconfig.watch.json" }
+	]
+}
