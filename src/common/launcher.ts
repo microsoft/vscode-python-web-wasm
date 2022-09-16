@@ -55,6 +55,13 @@ export abstract class Launcher {
 		return this.exitPromise;
 	}
 
+	public terminate(): Promise<void> {
+		if (this.terminal !== undefined) {
+			this.terminal.sendText(`Execution terminated`, true);
+		}
+		return this.terminateConnection();
+	}
+
 	protected abstract createConnection(context: ExtensionContext): Promise<ServiceConnection<Requests>>;
 
 	protected abstract terminateConnection(): Promise<void>;

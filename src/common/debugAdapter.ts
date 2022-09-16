@@ -47,6 +47,15 @@ export class DebugAdapter implements vscode.DebugAdapter {
 				await this.handleLaunch(request.arguments as DebugProtocol.LaunchRequestArguments);
 				this._sendMessage.fire(new Response(request));
 				break;
+			case 'terminate':
+				await this.handleTerminate(request.arguments as DebugProtocol.TerminateArguments);
+				this._sendMessage.fire(new Response(request));
+				this.sendTerminated();
+				break;
+			case 'restart':
+				await this.handleRestart(request.arguments as DebugProtocol.RestartArguments);
+				this._sendMessage.fire(new Response(request));
+				break;
 			default:
 				this._sendMessage.fire(new Response(request, `Unhandled request ${request.command}`));
 				break;
@@ -94,10 +103,39 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private async handleLaunch(args: DebugProtocol.LaunchRequestArguments): Promise<void> {
+		return this.launch();
+	}
+
+	private async handleTerminate(args: DebugProtocol.TerminateArguments): Promise<void> {
+		if (this.launcher === undefined) {
+			return;
+		}
+		await this.launcher.terminate();
+		this.launcher = undefined;
+	}
+
+	private async handleRestart(args: DebugProtocol.RestartArguments): Promise<void> {
+		if (this.launcher === undefined) {
+			return;
+		}
+		await this.launcher.terminate();
+		this.launcher = undefined;
+		await this.launch();
+	}
+
+	private sendTerminated(): void {
+		const terminated: DebugProtocol.TerminatedEvent = new Event('terminated', { restart: false });
+		this._sendMessage.fire(terminated);
+	}
+
+	private async launch(): Promise<void> {
+		if (this.launcher !== undefined) {
+			return;
+		}
 		this.launcher = RAL().launcher.create();
 		this.launcher.onExit().then((_rval) => {
-			const terminated: DebugProtocol.TerminatedEvent = new Event('terminated', { restart: false });
-			this._sendMessage.fire(terminated);
+			this.launcher = undefined;
+			this.sendTerminated();
 		}).catch(console.error);
 		await this.launcher.run(this.context);
 	}
