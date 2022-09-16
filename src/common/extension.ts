@@ -3,19 +3,26 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import * as vscode from 'vscode';
+import {
+	CancellationToken, commands, debug, DebugAdapterDescriptor, DebugAdapterInlineImplementation, DebugConfiguration,
+	DebugSession, ExtensionContext, extensions, ProviderResult, Uri, window, WorkspaceFolder, workspace
+} from 'vscode';
 
 import { DebugAdapter } from './debugAdapter';
 
-class DebugConfigurationProvider implements vscode.DebugConfigurationProvider {
+class DebugConfigurationProvider implements DebugConfigurationProvider {
+
+	constructor(private readonly preloadPromise: Promise<void>) {
+	}
 
 	/**
 	 * Massage a debug configuration just before a debug session is being launched,
 	 * e.g. add all missing attributes to the debug configuration.
 	 */
-	async resolveDebugConfiguration(folder: vscode.WorkspaceFolder | undefined, config: vscode.DebugConfiguration, token?: vscode.CancellationToken): Promise<vscode.DebugConfiguration | undefined> {
+	async resolveDebugConfiguration(folder: WorkspaceFolder | undefined, config: DebugConfiguration, token?: CancellationToken): Promise<DebugConfiguration | undefined> {
+		await this.preloadPromise;
 		if (!config.type && !config.request && !config.name) {
-			const editor = vscode.window.activeTextEditor;
+			const editor = window.activeTextEditor;
 			if (editor && editor.document.languageId === 'python') {
 				config.type = 'python-web-wasm';
 				config.name = 'Launch';
@@ -26,7 +33,7 @@ class DebugConfigurationProvider implements vscode.DebugConfigurationProvider {
 		}
 
 		if (!config.program) {
-			await vscode.window.showInformationMessage('Cannot find a Python file to debug');
+			await window.showInformationMessage('Cannot find a Python file to debug');
 			return undefined;
 		}
 
@@ -34,25 +41,26 @@ class DebugConfigurationProvider implements vscode.DebugConfigurationProvider {
 	}
 }
 
-class DebugAdapterDescriptorFactory implements vscode.DebugAdapterDescriptorFactory {
-	constructor(private readonly context: vscode.ExtensionContext) {
+class DebugAdapterDescriptorFactory implements DebugAdapterDescriptorFactory {
+	constructor(private readonly context: ExtensionContext, private readonly preloadPromise: Promise<void>) {
 	}
-	createDebugAdapterDescriptor(session: vscode.DebugSession): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-		return new vscode.DebugAdapterInlineImplementation(new DebugAdapter(session, this.context));
+	async createDebugAdapterDescriptor(session: DebugSession): Promise<DebugAdapterDescriptor> {
+		await this.preloadPromise;
+		return new DebugAdapterInlineImplementation(new DebugAdapter(session, this.context));
 	}
 }
 
-export function activate(context: vscode.ExtensionContext) {
-	void vscode.window.showWarningMessage('Hello World from python web');
-
+export function activate(context: ExtensionContext) {
+	const preloadPromise = preloadPython();
 	context.subscriptions.push(
-		vscode.commands.registerCommand('vscode-python-web-wasm.debug.runEditorContents', async (resource: vscode.Uri) => {
+		commands.registerCommand('vscode-python-web-wasm.debug.runEditorContents', async (resource: Uri) => {
 			let targetResource = resource;
-			if (!targetResource && vscode.window.activeTextEditor) {
-				targetResource = vscode.window.activeTextEditor.document.uri;
+			if (!targetResource && window.activeTextEditor) {
+				targetResource = window.activeTextEditor.document.uri;
 			}
 			if (targetResource) {
-				return vscode.debug.startDebugging(undefined, {
+				await preloadPromise;
+				return debug.startDebugging(undefined, {
 					type: 'python-web-wasm',
 					name: 'Run Python in WASM',
 					request: 'launch',
@@ -64,13 +72,14 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 			return false;
 		}),
-		vscode.commands.registerCommand('vscode-python-web-wasm.debug.debugEditorContents', async (resource: vscode.Uri) => {
+		commands.registerCommand('vscode-python-web-wasm.debug.debugEditorContents', async (resource: Uri) => {
 			let targetResource = resource;
-			if (!targetResource && vscode.window.activeTextEditor) {
-				targetResource = vscode.window.activeTextEditor.document.uri;
+			if (!targetResource && window.activeTextEditor) {
+				targetResource = window.activeTextEditor.document.uri;
 			}
 			if (targetResource) {
-				return vscode.debug.startDebugging(undefined, {
+				await preloadPromise;
+				return debug.startDebugging(undefined, {
 					type: 'python-web-wasm',
 					name: 'Debug Python in WASM',
 					request: 'launch',
@@ -80,21 +89,47 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 			return false;
 		}),
-		vscode.commands.registerCommand('vscode-python-web-wasm.debug.getProgramName', config => {
-			return vscode.window.showInputBox({
+		commands.registerCommand('vscode-python-web-wasm.debug.getProgramName', config => {
+			return window.showInputBox({
 				placeHolder: 'Please enter the name of a markdown file in the workspace folder',
 				value: 'app.py'
 			});
 		})
 	);
 
-	const provider = new DebugConfigurationProvider();
-	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('python-web-wasm', provider));
+	const provider = new DebugConfigurationProvider(preloadPromise);
+	context.subscriptions.push(debug.registerDebugConfigurationProvider('python-web-wasm', provider));
 
-	const factory = new DebugAdapterDescriptorFactory(context);
-	context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
+	const factory = new DebugAdapterDescriptorFactory(context, preloadPromise);
+	context.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
 }
 
 export function deactivate(): Promise<void> {
 	return Promise.reject();
+}
+
+async function preloadPython(): Promise<void> {
+	try {
+		const remoteHub = getRemoteHubExtension();
+		if (remoteHub !== undefined) {
+			const remoteHubApi = await remoteHub.activate();
+			if (remoteHubApi.loadWorkspaceContents !== undefined) {
+				const uri = Uri.parse('vscode-vfs://github/dbaeumer/python-3.11.0rc');
+				await remoteHubApi.loadWorkspaceContents(uri);
+				void workspace.fs.readFile(Uri.joinPath(uri, 'python.wasm'));
+			}
+		}
+	} catch (error) {
+		console.log(error);
+	}
+}
+
+function getRemoteHubExtension() {
+
+	type RemoteHubApiStub = { loadWorkspaceContents?(workspaceUri: Uri): Promise<boolean> };
+	const remoteHub = extensions.getExtension<RemoteHubApiStub>('ms-vscode.remote-repositories')
+		?? extensions.getExtension<RemoteHubApiStub>('GitHub.remoteHub')
+		?? extensions.getExtension<RemoteHubApiStub>('GitHub.remoteHub-insiders');
+
+	return remoteHub;
 }

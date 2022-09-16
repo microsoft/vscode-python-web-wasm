@@ -3,39 +3,29 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { ExtensionContext, Uri, window } from 'vscode';
+import { ExtensionContext, Uri } from 'vscode';
 
 import { Worker } from 'worker_threads';
 
 import { Launcher } from '../common/launcher';
 import { ServiceConnection } from '@vscode/sync-api-common/node';
-import { Requests, ApiService } from '@vscode/sync-api-service';
+import { Requests } from '@vscode/sync-api-service';
 
-export class DesktopLauncher implements Launcher {
+export class DesktopLauncher extends Launcher {
 
-	private readonly exitPromise: Promise<number>;
-	private exitResolveCallback!: ((value: number) => void);
+	private worker: Worker | undefined;
 
 	public constructor() {
-		this.exitPromise = new Promise((resolve) => {
-			this.exitResolveCallback = resolve;
-		});
+		super();
 	}
 
-	public async run(context: ExtensionContext): Promise<void> {
+	protected async createConnection(context: ExtensionContext): Promise<ServiceConnection<Requests>> {
 		const filename = Uri.joinPath(context.extensionUri, './out/desktop/pythonWasmWorker.js').fsPath;
-		const worker = new Worker(filename);
-		const connection = new ServiceConnection<Requests>(worker);
-		const apiService = new ApiService('Python Shell', connection, (rval) => {
-			process.nextTick(() => worker.terminate());
-			this.exitResolveCallback(rval);
-		});
-		const terminal = window.createTerminal({ name: 'Python Terminal', pty: apiService.getPty() });
-		terminal.show();
-		connection.signalReady();
+		this.worker = new Worker(filename);
+		return new ServiceConnection<Requests>(this.worker);
 	}
 
-	onExit(): Promise<number> {
-		return this.exitPromise;
+	protected async terminateConnection(): Promise<void> {
+		await this.worker?.terminate();
 	}
 }

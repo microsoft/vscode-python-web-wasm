@@ -34,6 +34,22 @@
 			"problemMatcher": [
 				"$tsc"
 			]
+		},
+		{
+			"type": "npm",
+			"script": "serve",
+			"problemMatcher": [],
+			"label": "npm: serve",
+			"detail": "serve --cors -l 5000 -c ./configs/serve.json",
+			"isBackground": true
+		},
+		{
+			"type": "npm",
+			"script": "tunnel",
+			"problemMatcher": [],
+			"label": "npm: tunnel",
+			"detail": "localtunnel -p 5000",
+			"isBackground": true
 		}
 	]
 }

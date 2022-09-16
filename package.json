@@ -14,12 +14,16 @@
 	"activationEvents": [
 		"onDebugResolve:python-web-wasm",
 		"onDebug",
-		"*"
+		"onCommand:vscode-python-web-wasm.debug.runEditorContents",
+		"onCommand:vscode-python-web-wasm.debug.debugEditorContents"
+	],
+	"extensionDependencies": [
+		"ms-vscode.remote-repositories"
 	],
 	"dependencies": {
 		"@types/path-browserify": "^1.0.0",
 		"@vscode/debugprotocol": "1.57.0",
-		"@vscode/sync-api-service": "0.6.1",
+		"@vscode/sync-api-service": "0.6.2",
 		"@vscode/wasm-wasi": "0.6.0",
 		"path-browserify": "^1.0.1"
 	},
@@ -30,13 +34,17 @@
 		"@typescript-eslint/parser": "^5.36.2",
 		"esbuild": "^0.15.7",
 		"eslint": "^8.23.1",
-		"typescript": "^4.8.3"
+		"typescript": "^4.8.3",
+		"serve": "^14.0.1",
+		"localtunnel": "^2.0.2"
 	},
 	"scripts": {
 		"compile": "tsc -b ./tsconfig.json",
 		"watch": "tsc -b ./tsconfig.json -w",
 		"clean": "tsc -b tsconfig.json --clean",
-		"esbuild": "node ./bin/esbuild.js"
+		"esbuild": "node ./bin/esbuild.js",
+		"serve": "serve --cors -l 5000 -c ./configs/serve.json",
+		"tunnel": "lt -p 5000"
 	},
 	"contributes": {
 		"debuggers": [

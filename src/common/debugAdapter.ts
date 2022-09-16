@@ -9,6 +9,7 @@ import { DebugProtocol } from '@vscode/debugprotocol';
 
 import RAL from './ral';
 import { Event, Response } from './debugMessages';
+import { Launcher } from './launcher';
 
 export class DebugAdapter implements vscode.DebugAdapter {
 
@@ -16,6 +17,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 	private sequenceNumber: number;
 	private _sendMessage: vscode.EventEmitter<vscode.DebugProtocolMessage>;
+
+	private launcher: Launcher | undefined;
 
 	constructor(_vscodeSession: vscode.DebugSession, context: vscode.ExtensionContext) {
 		this.context = context;
@@ -91,15 +94,14 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private async handleLaunch(args: DebugProtocol.LaunchRequestArguments): Promise<void> {
-		const launcher = RAL().launcher.create();
-		launcher.onExit().then((_rval) => {
+		this.launcher = RAL().launcher.create();
+		this.launcher.onExit().then((_rval) => {
 			const terminated: DebugProtocol.TerminatedEvent = new Event('terminated', { restart: false });
 			this._sendMessage.fire(terminated);
 		}).catch(console.error);
-		await launcher.run(this.context);
+		await this.launcher.run(this.context);
 	}
 
 	dispose() {
-		throw new Error('Method not implemented.');
 	}
 }
