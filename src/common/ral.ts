@@ -3,12 +3,14 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
+import { IPath } from './path';
 import { Launcher } from './launcher';
 
 interface RAL {
 	readonly launcher: {
 		create(): Launcher;
 	}
+	readonly path: IPath;
 }
 
 let _ral: RAL | undefined;

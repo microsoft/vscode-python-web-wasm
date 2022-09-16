@@ -9,6 +9,7 @@ import {
 } from 'vscode';
 
 import { DebugAdapter } from './debugAdapter';
+import RAL from './ral';
 
 class DebugConfigurationProvider implements DebugConfigurationProvider {
 
@@ -88,6 +89,10 @@ export function activate(context: ExtensionContext) {
 				});
 			}
 			return false;
+		}),
+		commands.registerCommand('vscode-python-web-wasm.repl.start', async () => {
+			const launcher = RAL().launcher.create();
+			return launcher.run(context);
 		}),
 		commands.registerCommand('vscode-python-web-wasm.debug.getProgramName', config => {
 			return window.showInputBox({

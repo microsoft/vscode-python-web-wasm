@@ -15,7 +15,8 @@
 		"onDebugResolve:python-web-wasm",
 		"onDebug",
 		"onCommand:vscode-python-web-wasm.debug.runEditorContents",
-		"onCommand:vscode-python-web-wasm.debug.debugEditorContents"
+		"onCommand:vscode-python-web-wasm.debug.debugEditorContents",
+		"onCommand:vscode-python-web-wasm.repl.start"
 	],
 	"extensionDependencies": [
 		"ms-vscode.remote-repositories"
@@ -78,17 +79,23 @@
 		"commands": [
 			{
 				"command": "vscode-python-web-wasm.debug.runEditorContents",
-				"title": "Run Python in WASM",
-				"category": "wasm",
+				"title": "Run Python File in WASM",
+				"category": "Python WASM",
 				"enablement": "!inDebugMode",
 				"icon": "$(play)"
 			},
 			{
 				"command": "vscode-python-web-wasm.debug.debugEditorContents",
-				"title": "Debug Python in WASM",
-				"category": "wasm",
+				"title": "Debug Python File in WASM",
+				"category": "Python WASM",
 				"enablement": "!inDebugMode",
 				"icon": "$(debug-alt)"
+			},
+			{
+				"command": "vscode-python-web-wasm.repl.start",
+				"title": "Start REPL",
+				"category": "Python WASM",
+				"icon": "$(play)"
 			}
 		]
 	}

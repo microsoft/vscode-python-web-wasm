@@ -2,6 +2,7 @@
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
+import path from 'path';
 
 import RAL from '../common/ral';
 import { Launcher } from '../common/launcher';
@@ -12,7 +13,8 @@ const _ril: RAL = Object.freeze<RAL>({
 		create(): Launcher {
 			return new DesktopLauncher();
 		}
-	})
+	}),
+	path: path.posix
 });
 
 

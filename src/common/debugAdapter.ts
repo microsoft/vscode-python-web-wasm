@@ -102,8 +102,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		};
 	}
 
-	private async handleLaunch(args: DebugProtocol.LaunchRequestArguments): Promise<void> {
-		return this.launch();
+	private async handleLaunch(args: DebugProtocol.LaunchRequestArguments & { program?: string }): Promise<void> {
+		return this.launch(args.program);
 	}
 
 	private async handleTerminate(args: DebugProtocol.TerminateArguments): Promise<void> {
@@ -128,7 +128,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._sendMessage.fire(terminated);
 	}
 
-	private async launch(): Promise<void> {
+	private async launch(program?: string): Promise<void> {
 		if (this.launcher !== undefined) {
 			return;
 		}
@@ -137,7 +137,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			this.launcher = undefined;
 			this.sendTerminated();
 		}).catch(console.error);
-		await this.launcher.run(this.context);
+		await this.launcher.run(this.context, program?.replace(/\\/g, '/'));
 	}
 
 	dispose() {

@@ -3,6 +3,8 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
+import path from 'path-browserify';
+
 import RAL from '../common/ral';
 import { Launcher } from '../common/launcher';
 import { WebLauncher } from './launcher';
@@ -12,7 +14,8 @@ const _ril: RAL = Object.freeze<RAL>({
 		create(): Launcher {
 			return new WebLauncher();
 		}
-	})
+	}),
+	path: path
 });
 
 
