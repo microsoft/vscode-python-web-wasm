@@ -19,5 +19,9 @@
 		"@typescript-eslint/indent",
 		"!@typescript-eslint/*",
 		"*"
+	],
+	"eslint.workingDirectories": [
+		"bin",
+		"."
 	]
 }
