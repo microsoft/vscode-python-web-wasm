@@ -37,9 +37,11 @@
 		"eslint": "^8.23.1",
 		"typescript": "^4.8.3",
 		"serve": "^14.0.1",
-		"localtunnel": "^2.0.2"
+		"localtunnel": "^2.0.2",
+		"shelljs": "^0.8.5"
 	},
 	"scripts": {
+		"symlink:dev": "node ./bin/symlink",
 		"compile": "tsc -b ./tsconfig.json",
 		"watch": "tsc -b ./tsconfig.json -w",
 		"clean": "tsc -b tsconfig.json --clean",
