@@ -7,6 +7,7 @@ import { ExtensionContext, Terminal, window } from 'vscode';
 
 import RAL from './ral';
 import { ServiceConnection, Requests, ApiService, RAL as SyncRAL} from '@vscode/sync-api-service';
+import { } from 'web-shell-engine';
 
 export abstract class Launcher {
 
