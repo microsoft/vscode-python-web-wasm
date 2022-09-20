@@ -18,10 +18,8 @@ resources:
       ref: main
       endpoint: Monaco
 
-variables:
-  - template: templates/variables.yml
-
 extends:
   template: azure-pipelines/extension/stable.yml@templates
   parameters:
-    buildSteps: ${{ variables.buildSteps }}
+    buildSteps:
+      - template: templates/compile.yml

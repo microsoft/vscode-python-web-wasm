@@ -4,9 +4,6 @@ pr:
   - main
   - release/*
 
-variables:
-  - template: templates/variables.yml
-
 jobs:
   - job: Windows
     pool:
@@ -14,7 +11,8 @@ jobs:
     steps:
       - template: templates/compile.yml
         parameters:
-          buildSteps: ${{ variables.buildSteps }}
+          buildSteps:
+            - template: templates/compile.yml
 
       - task: RichCodeNavIndexer@0
         displayName: VS Rich Code Navigation Upload
@@ -30,4 +28,5 @@ jobs:
     steps:
       - template: templates/compile.yml
         parameters:
-          buildSteps: ${{ variables.buildSteps }}
+          buildSteps:
+            - template: templates/compile.yml

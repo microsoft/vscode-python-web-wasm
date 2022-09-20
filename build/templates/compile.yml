@@ -1,7 +1,9 @@
-parameters:
-  - name: buildSteps
-    type: stepList
-
 steps:
-  - ${{ each buildStep in parameters.buildSteps }}:
-      - ${{ buildStep }}
+  - script: |
+      npm ci
+    displayName: "Install dependencies"
+
+  - script: |
+      npm run lint
+      npm run compile
+    displayName: "Lint & Compile"
