@@ -1,0 +1,33 @@
+trigger: none
+
+pr:
+  - main
+  - release/*
+
+variables:
+  - template: templates/variables.yml
+
+jobs:
+  - job: Windows
+    pool:
+      vmImage: "windows-latest"
+    steps:
+      - template: templates/compile.yml
+        parameters:
+          buildSteps: ${{ variables.buildSteps }}
+
+      - task: RichCodeNavIndexer@0
+        displayName: VS Rich Code Navigation Upload
+        inputs:
+          languages: typescript,
+          typescriptVersion: 0.6.0-next.21
+          configFiles: .lsifrc.json
+        continueOnError: true
+
+  - job: Linux
+    pool:
+      vmImage: "ubuntu-latest"
+    steps:
+      - template: templates/compile.yml
+        parameters:
+          buildSteps: ${{ variables.buildSteps }}

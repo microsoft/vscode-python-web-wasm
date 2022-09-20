@@ -1,0 +1,7 @@
+parameters:
+  - name: buildSteps
+    type: stepList
+
+steps:
+  - ${{ each buildStep in parameters.buildSteps }}:
+      - ${{ buildStep }}

@@ -1,0 +1,27 @@
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+      - release/*
+  tags:
+    include:
+      - release/*
+pr: none
+
+resources:
+  repositories:
+    - repository: templates
+      type: github
+      name: microsoft/vscode-engineering
+      ref: main
+      endpoint: Monaco
+
+variables:
+  - template: templates/variables.yml
+
+extends:
+  template: azure-pipelines/extension/stable.yml@templates
+  parameters:
+    buildSteps: ${{ variables.buildSteps }}
