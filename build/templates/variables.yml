@@ -1,0 +1,10 @@
+variables:
+  buildSteps:
+    - script: |
+        npm ci
+      displayName: "Install dependencies"
+
+    - script: |
+        npm run lint
+        npm run compile
+      displayName: "Lint & Compile"
