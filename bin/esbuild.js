@@ -6,7 +6,7 @@
 
 const esbuild = require('esbuild');
 
-const extension = esbuild.build({
+const webExtension = esbuild.build({
 	entryPoints: ['out/web/extension.js'],
 	outfile: 'dist/web/extension.js',
 	bundle: true,
@@ -16,7 +16,7 @@ const extension = esbuild.build({
 	platform: 'browser'
 }).catch(console.error);
 
-const worker = esbuild.build({
+const webWorker = esbuild.build({
 	entryPoints: ['out/web/pythonWasmWorker.js'],
 	outfile: 'dist/web/pythonWasmWorker.js',
 	bundle: true,
@@ -26,4 +26,25 @@ const worker = esbuild.build({
 	platform: 'browser'
 }).catch(console.error);
 
-Promise.all([extension, worker]).catch(console.error);
+const desktopExtension = esbuild.build({
+	entryPoints: ['out/desktop/extension.js'],
+	outfile: 'dist/desktop/extension.js',
+	bundle: true,
+	external: ['vscode'],
+	format: 'cjs',
+	target: 'es2020',
+	platform: 'node'
+}).catch(console.error);
+
+const desktopWorker = esbuild.build({
+	entryPoints: ['out/desktop/pythonWasmWorker.js'],
+	outfile: 'dist/desktop/pythonWasmWorker.js',
+	bundle: true,
+	external: ['vscode'],
+	format: 'iife',
+	target: 'es2020',
+	platform: 'node'
+}).catch(console.error);
+
+
+Promise.all([webExtension, webWorker, desktopExtension, desktopWorker]).catch(console.error);
