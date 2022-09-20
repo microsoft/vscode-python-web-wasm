@@ -1,7 +1,8 @@
 {
 	"name": "vscode-python-web-wasm",
+	"preview": true,
 	"publisher": "ms-vscode",
-	"displayName": "Python for the Web",
+	"displayName": "Experimental - Python for the Web",
 	"description": "Experimental support for Python in the Web using WebAssemblies",
 	"version": "0.1.0",
 	"author": "Microsoft Corporation",
