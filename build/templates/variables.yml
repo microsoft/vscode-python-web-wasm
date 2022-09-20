@@ -1,5 +1,6 @@
 variables:
-  buildSteps:
+  name: buildSteps
+  value:
     - script: |
         npm ci
       displayName: "Install dependencies"
