@@ -16,7 +16,7 @@ namespace PythonInstallation  {
 			pythonWasm = 'python/python.wasm';
 		}
 		const api = await RemoteRepositories.getApi();
-		const vfs = api.getVirtualUri(Uri.parse(pythonRoot));
+		const vfs = api.getVirtualUri(Uri.parse(pythonRoot.replace('//github.com/', '//github/')));
 		return [vfs, pythonWasm];
 	}
 
