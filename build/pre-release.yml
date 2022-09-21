@@ -1,10 +1,6 @@
 name: $(Date:yyyyMMdd)$(Rev:.r)
 
 trigger:
-  branches:
-    include:
-      - main
-      - release/*
   tags:
     include:
       - pre-release/*
