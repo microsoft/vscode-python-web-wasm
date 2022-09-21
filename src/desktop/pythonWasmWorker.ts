@@ -6,7 +6,9 @@
 
 import * as _path from 'path';
 const path = _path.posix;
-import { parentPort  } from 'worker_threads';
+import { MessagePort, parentPort  } from 'worker_threads';
+
+import { createMessageConnection, PortMessageReader, PortMessageWriter } from 'vscode-jsonrpc/node';
 
 if (parentPort === null) {
 	process.exit();
@@ -19,7 +21,11 @@ import { WasmRunner } from '../common/pythonWasmWorker';
 
 class WebWasmRunner extends WasmRunner {
 	constructor() {
-		super(new ClientConnection<Requests>(parentPort!), path);
+		super(createMessageConnection(new PortMessageReader(parentPort!), new PortMessageWriter(parentPort!)), path);
+	}
+
+	protected createClientConnection(port: MessagePort): ClientConnection<Requests> {
+		return new ClientConnection<Requests>(port);
 	}
 
 	protected async doRun(binary: Uint8Array, wasi: WASI): Promise<void> {
@@ -32,4 +38,4 @@ class WebWasmRunner extends WasmRunner {
 }
 
 const runner = new WebWasmRunner();
-runner.run().catch(console.error);
+runner.listen();

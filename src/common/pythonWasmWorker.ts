@@ -3,29 +3,66 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { URI } from 'vscode-uri';
+import { Uri } from 'vscode';
 
+import { MessageConnection } from 'vscode-jsonrpc';
 import { WASI, Options } from '@vscode/wasm-wasi';
 import { ClientConnection, ApiClient, Requests } from '@vscode/sync-api-client';
 
+import { Initialize, ExecuteFile, RunRepl } from './messages';
+
 export abstract class WasmRunner {
-	constructor(private readonly connection: ClientConnection<Requests>, private readonly path: { readonly join: (...paths: string[]) => string, readonly sep: string }) {
+
+	private clientConnection!: ClientConnection<Requests>;
+
+	private pythonRoot!: Uri;
+	private apiClient!: ApiClient;
+	private binary!: Uint8Array;
+
+	constructor(private readonly connection: MessageConnection, private readonly path: { readonly join: (...paths: string[]) => string, readonly sep: string }) {
+		this.connection = connection;
+
+		connection.onRequest(Initialize.type, async (params) => {
+			this.clientConnection = this.createClientConnection(params.syncPort);
+			await this.clientConnection.serviceReady();
+			this.apiClient = new ApiClient(this.clientConnection);
+
+			this.pythonRoot = Uri.parse(params.pythonRoot);
+			this.binary = this.apiClient.vscode.workspace.fileSystem.readFile(this.pythonRoot.with({ path: path.join(this.pythonRoot.path, 'python.wasm') }));
+
+		});
+		connection.onRequest(ExecuteFile.type, (params) => {
+			return this.executePythonFile(Uri.parse(params.file));
+		});
+		connection.onRequest(RunRepl.type, (params) => {
+			return this.runRepl();
+		});
 	}
 
-	public async run(): Promise<void> {
-		await this.connection.serviceReady();
+	public listen(): void {
+		this.connection.listen();
+	}
+
+	protected abstract createClientConnection(port: any): ClientConnection<Requests>;
+
+	protected async executePythonFile(file: Uri): Promise<number> {
+		return this.run(file);
+	}
+
+	protected async runRepl(): Promise<number> {
+		return this.run();
+	}
+
+	private async run(file?: Uri): Promise<number> {
 		const path = this.path;
-		const name = 'Python Terminal';
-		const apiClient = new ApiClient(this.connection);
-		const workspaceFolders = apiClient.vscode.workspace.workspaceFolders;
-		const activeTextDocument = apiClient.vscode.window.activeTextDocument;
+		const name = 'Python WASM';
+		const workspaceFolders = this.apiClient.vscode.workspace.workspaceFolders;
 		const mapDir: Options['mapDir'] = [];
 		let toRun: string | undefined;
 		if (workspaceFolders.length === 1) {
 			const folderUri = workspaceFolders[0].uri;
 			mapDir.push({ name: path.join(path.sep, 'workspace'), uri: folderUri });
-			if (activeTextDocument !== undefined) {
-				const file =  activeTextDocument.uri;
+			if (file !== undefined) {
 				if (file.toString().startsWith(folderUri.toString())) {
 					toRun = path.join(path.sep, 'workspace', file.toString().substring(folderUri.toString().length));
 				}
@@ -35,21 +72,20 @@ export abstract class WasmRunner {
 				mapDir.push({ name: path.join(path.sep, 'workspaces', folder.name), uri: folder.uri });
 			}
 		}
-		const pythonRoot = URI.parse('vscode-vfs://github/dbaeumer/python-3.11.0rc');
-		mapDir.push({ name: path.sep, uri: pythonRoot });
+		mapDir.push({ name: path.sep, uri: this.pythonRoot });
+		let exitCode: number | undefined;
 		const exitHandler = (rval: number): void => {
-			apiClient.process.procExit(rval);
+			exitCode = rval;
 		};
-		const wasi = WASI.create(name, apiClient, exitHandler, {
+		const wasi = WASI.create(name, this.apiClient, exitHandler, {
 			mapDir,
 			argv: toRun !== undefined ? ['python', '-X', 'utf8', toRun] : ['python', '-X', 'utf8'],
 			env: {
 				PYTHONPATH: '/workspace'
 			}
 		});
-		const binary = apiClient.vscode.workspace.fileSystem.readFile(pythonRoot.with({ path: path.join(pythonRoot.path, 'python.wasm') }));
-		await this.doRun(binary, wasi);
-		apiClient.process.procExit(0);
+		await this.doRun(this.binary, wasi);
+		return exitCode ?? 0;
 	}
 
 	protected abstract doRun(binary: Uint8Array, wasi: WASI): Promise<void>;

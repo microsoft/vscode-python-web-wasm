@@ -3,21 +3,27 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { ExtensionContext, Terminal, window } from 'vscode';
+import { ExtensionContext, Terminal, Uri, window } from 'vscode';
+
+import { MessageConnection } from 'vscode-jsonrpc';
+import { ServiceConnection, Requests, ApiService, RAL as SyncRAL} from '@vscode/sync-api-service';
 
 import RAL from './ral';
-import { ServiceConnection, Requests, ApiService, RAL as SyncRAL} from '@vscode/sync-api-service';
+import PythonInstallation from './pythonInstallation';
+import { ExecuteFile, RunRepl } from './messages';
 
 export abstract class Launcher {
 
 	private readonly exitPromise: Promise<number>;
 	private exitResolveCallback!: ((value: number) => void);
+	private exitRejectCallback!: ((reason: any) => void);
 
 	private terminal: Terminal | undefined;
 
 	public constructor() {
-		this.exitPromise = new Promise((resolve) => {
+		this.exitPromise = new Promise((resolve, reject) => {
 			this.exitResolveCallback = resolve;
+			this.exitRejectCallback = reject;
 		});
 	}
 
@@ -28,13 +34,15 @@ export abstract class Launcher {
 	 * @returns A promise that completes when the WASM is executing.
 	 */
 	public async run(context: ExtensionContext, program?: string): Promise<void> {
-		const connection = await this.createConnection(context);
-		const apiService = new ApiService('Python WASM Execution', connection, {
-			exitHandler: (rval) => {
-				SyncRAL().timer.setTimeout(async () => {
-					await this.terminateConnection();
-				}, 0);
-				this.exitResolveCallback(rval);
+		const [pythonRoot, pythonWasm] = await PythonInstallation.getConfig();
+
+		const messageConnection = await this.createMessageConnection(context);
+		messageConnection.listen();
+
+		const syncConnection = await this.createSyncConnection(messageConnection, pythonRoot, pythonWasm);
+
+		const apiService = new ApiService('Python WASM Execution', syncConnection, {
+			exitHandler: (_rval) => {
 			},
 			echoName: false
 		});
@@ -46,8 +54,14 @@ export abstract class Launcher {
 			this.terminal = window.createTerminal({ name: name, pty: apiService.getPty() });
 			this.terminal.show();
 		}, 250);
+		syncConnection.signalReady();
 
-		connection.signalReady();
+		const result: Promise<number> =
+			program === undefined ? messageConnection.sendRequest(RunRepl.type) : messageConnection.sendRequest(ExecuteFile.type, { file: program });
+
+		result.
+			then((rval) => { this.exitResolveCallback(rval);}).
+			catch((reason) => { this.exitRejectCallback(reason); });
 	}
 
 	/**
@@ -66,7 +80,9 @@ export abstract class Launcher {
 		return this.terminateConnection();
 	}
 
-	protected abstract createConnection(context: ExtensionContext): Promise<ServiceConnection<Requests>>;
+	protected abstract createMessageConnection(context: ExtensionContext): Promise<MessageConnection>;
+
+	protected abstract createSyncConnection(messageConnection: MessageConnection, pythonRoot: Uri, pythonWasm: string): Promise<ServiceConnection<Requests>>;
 
 	protected abstract terminateConnection(): Promise<void>;
 }

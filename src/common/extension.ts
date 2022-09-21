@@ -5,10 +5,11 @@
 
 import {
 	CancellationToken, commands, debug, DebugAdapterDescriptor, DebugAdapterInlineImplementation, DebugConfiguration,
-	DebugSession, ExtensionContext, extensions, ProviderResult, Uri, window, WorkspaceFolder, workspace
+	DebugSession, ExtensionContext, Uri, window, WorkspaceFolder, workspace
 } from 'vscode';
 
 import { DebugAdapter } from './debugAdapter';
+import PythonInstallation from './pythonInstallation';
 import RAL from './ral';
 
 class DebugConfigurationProvider implements DebugConfigurationProvider {
@@ -52,7 +53,7 @@ class DebugAdapterDescriptorFactory implements DebugAdapterDescriptorFactory {
 }
 
 export function activate(context: ExtensionContext) {
-	const preloadPromise = preloadPython();
+	const preloadPromise = PythonInstallation.preload();
 	context.subscriptions.push(
 		commands.registerCommand('vscode-python-web-wasm.debug.runEditorContents', async (resource: Uri) => {
 			let targetResource = resource;
@@ -111,30 +112,4 @@ export function activate(context: ExtensionContext) {
 
 export function deactivate(): Promise<void> {
 	return Promise.reject();
-}
-
-async function preloadPython(): Promise<void> {
-	try {
-		const remoteHub = getRemoteHubExtension();
-		if (remoteHub !== undefined) {
-			const remoteHubApi = await remoteHub.activate();
-			if (remoteHubApi.loadWorkspaceContents !== undefined) {
-				const uri = Uri.parse('vscode-vfs://github/dbaeumer/python-3.11.0rc');
-				await remoteHubApi.loadWorkspaceContents(uri);
-				void workspace.fs.readFile(Uri.joinPath(uri, 'python.wasm'));
-			}
-		}
-	} catch (error) {
-		console.log(error);
-	}
-}
-
-function getRemoteHubExtension() {
-
-	type RemoteHubApiStub = { loadWorkspaceContents?(workspaceUri: Uri): Promise<boolean> };
-	const remoteHub = extensions.getExtension<RemoteHubApiStub>('ms-vscode.remote-repositories')
-		?? extensions.getExtension<RemoteHubApiStub>('GitHub.remoteHub')
-		?? extensions.getExtension<RemoteHubApiStub>('GitHub.remoteHub-insiders');
-
-	return remoteHub;
 }
