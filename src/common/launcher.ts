@@ -5,12 +5,14 @@
 
 import { ExtensionContext, Terminal, Uri, window } from 'vscode';
 
-import { MessageConnection } from 'vscode-jsonrpc';
+import { BaseMessageConnection } from '@vscode/sync-api-service';
 import { ServiceConnection, Requests, ApiService, RAL as SyncRAL} from '@vscode/sync-api-service';
 
 import RAL from './ral';
 import PythonInstallation from './pythonInstallation';
-import { ExecuteFile, RunRepl } from './messages';
+import { MessageRequests } from './messages';
+
+type MessageConnection = BaseMessageConnection<MessageRequests, undefined, undefined, undefined, any>;
 
 export abstract class Launcher {
 
@@ -56,8 +58,9 @@ export abstract class Launcher {
 		}, 250);
 		syncConnection.signalReady();
 
-		const result: Promise<number> =
-			program === undefined ? messageConnection.sendRequest(RunRepl.type) : messageConnection.sendRequest(ExecuteFile.type, { file: program });
+		const result: Promise<number> = program === undefined
+			? messageConnection.sendRequest('runRepl')
+			: messageConnection.sendRequest('executeFile', { file: program });
 
 		result.
 			then((rval) => { this.exitResolveCallback(rval);}).

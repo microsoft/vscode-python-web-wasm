@@ -6,11 +6,12 @@
 // We can't use Uri from vscode since vscode is not available in a web worker.
 import { URI } from 'vscode-uri';
 
-import { MessageConnection } from 'vscode-jsonrpc';
+import { ClientConnection, ApiClient, Requests, BaseMessageConnection } from '@vscode/sync-api-client';
 import { WASI, Options } from '@vscode/wasm-wasi';
-import { ClientConnection, ApiClient, Requests } from '@vscode/sync-api-client';
 
-import { Initialize, ExecuteFile, RunRepl } from './messages';
+import { MessageRequests } from './messages';
+
+type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequests, undefined, unknown>;
 
 export abstract class WasmRunner {
 
@@ -23,19 +24,20 @@ export abstract class WasmRunner {
 	constructor(private readonly connection: MessageConnection, private readonly path: { readonly join: (...paths: string[]) => string, readonly sep: string }) {
 		this.connection = connection;
 
-		connection.onRequest(Initialize.type, async (params) => {
+		connection.onRequest('initialize', async (params) => {
 			this.clientConnection = this.createClientConnection(params.syncPort);
 			await this.clientConnection.serviceReady();
 			this.apiClient = new ApiClient(this.clientConnection);
 
 			this.pythonRoot = URI.parse(params.pythonRoot);
 			this.binary = this.apiClient.vscode.workspace.fileSystem.readFile(this.pythonRoot.with({ path: path.join(this.pythonRoot.path, 'python.wasm') }));
-
 		});
-		connection.onRequest(ExecuteFile.type, (params) => {
+
+		connection.onRequest('executeFile', (params) => {
 			return this.executePythonFile(URI.parse(params.file));
 		});
-		connection.onRequest(RunRepl.type, (params) => {
+
+		connection.onRequest('runRepl', () => {
 			return this.runRepl();
 		});
 	}

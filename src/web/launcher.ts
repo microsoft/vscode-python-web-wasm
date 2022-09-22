@@ -6,11 +6,10 @@
 import { ExtensionContext, Uri } from 'vscode';
 
 import { Requests } from '@vscode/sync-api-service';
-import { createMessageConnection, MessageConnection, BrowserMessageReader, BrowserMessageWriter } from 'vscode-jsonrpc/browser';
-import { ServiceConnection } from '@vscode/sync-api-common/browser';
+import { ServiceConnection, MessageConnection } from '@vscode/sync-api-common/browser';
 
 import { Launcher } from '../common/launcher';
-import { Initialize } from '../common/messages';
+import { MessageRequests } from '../common/messages';
 
 export class WebLauncher extends Launcher {
 
@@ -20,7 +19,7 @@ export class WebLauncher extends Launcher {
 		super();
 	}
 
-	protected async createMessageConnection(context: ExtensionContext): Promise<MessageConnection> {
+	protected async createMessageConnection(context: ExtensionContext): Promise<MessageConnection<MessageRequests, undefined>> {
 		const filename = Uri.joinPath(context.extensionUri, './dist/web/pythonWasmWorker.js').toString();
 		this.worker = new Worker(filename);
 		const channel = new MessageChannel();
@@ -42,12 +41,16 @@ export class WebLauncher extends Launcher {
 		});
 		this.worker.postMessage(channel.port2, [channel.port2]);
 		await ready;
-		return createMessageConnection(new BrowserMessageReader(channel.port1), new BrowserMessageWriter(channel.port1));
+		return new MessageConnection<MessageRequests, undefined>(channel.port1);
 	}
 
-	protected async createSyncConnection(messageConnection: MessageConnection, pythonRoot: Uri, pythonWasm: string): Promise<ServiceConnection<Requests>> {
+	protected async createSyncConnection(messageConnection: MessageConnection<MessageRequests, undefined>, pythonRoot: Uri, pythonWasm: string): Promise<ServiceConnection<Requests>> {
 		const channel = new MessageChannel();
-		await messageConnection.sendRequest(Initialize.type, { syncPort: channel.port2, pythonRoot: pythonRoot.toString(true), pythonWasm });
+		await messageConnection.sendRequest(
+			'initialize',
+			{ syncPort: channel.port2, pythonRoot: pythonRoot.toString(true), pythonWasm },
+			[channel.port2]
+		);
 		return new ServiceConnection<Requests>(channel.port1);
 	}
 
