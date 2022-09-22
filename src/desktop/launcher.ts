@@ -26,7 +26,23 @@ export class DesktopLauncher extends Launcher {
 	protected async createMessageConnection(context: ExtensionContext): Promise<MessageConnection> {
 		const filename = Uri.joinPath(context.extensionUri, './out/desktop/pythonWasmWorker.js').fsPath;
 		this.worker = new Worker(filename);
-		return createMessageConnection(new PortMessageReader(this.worker), new PortMessageWriter(this.worker));
+		const channel = new MessageChannel();
+		const ready = new Promise<void>((resolve, reject) => {
+			if (this.worker === undefined) {
+				reject(new Error(`Worker died unexpectedly.`));
+				return;
+			}
+			this.worker.once('message', (value: string) => {
+				if (value === 'ready') {
+					resolve();
+				} else {
+					reject(new Error(`Missing ready event from worker`));
+				}
+			});
+		});
+		this.worker.postMessage(channel.port2, [channel.port2]);
+		await ready;
+		return createMessageConnection(new PortMessageReader(channel.port1), new PortMessageWriter(channel.port1));
 	}
 
 	protected async createSyncConnection(messageConnection: MessageConnection, pythonRoot: Uri, pythonWasm: string): Promise<ServiceConnection<Requests>> {

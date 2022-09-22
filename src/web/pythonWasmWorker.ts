@@ -11,8 +11,8 @@ import { WASI } from '@vscode/wasm-wasi/browser';
 import { WasmRunner } from '../common/pythonWasmWorker';
 
 class WebWasmRunner extends WasmRunner {
-	constructor() {
-		super(createMessageConnection(new BrowserMessageReader(self), new BrowserMessageWriter(self)), path);
+	constructor(port: MessagePort) {
+		super(createMessageConnection(new BrowserMessageReader(port), new BrowserMessageWriter(port)), path);
 	}
 
 	protected createClientConnection(port: MessagePort): ClientConnection<Requests> {
@@ -28,5 +28,8 @@ class WebWasmRunner extends WasmRunner {
 	}
 }
 
-const runner = new WebWasmRunner();
-runner.listen();
+self.onmessage = (event: MessageEvent<MessagePort>) => {
+	const runner = new WebWasmRunner(event.data);
+	runner.listen();
+	self.postMessage('ready');
+};

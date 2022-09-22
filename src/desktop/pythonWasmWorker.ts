@@ -9,19 +9,18 @@ const path = _path.posix;
 import { MessagePort, parentPort  } from 'worker_threads';
 
 import { createMessageConnection, PortMessageReader, PortMessageWriter } from 'vscode-jsonrpc/node';
-
-if (parentPort === null) {
-	process.exit();
-}
-
 import { ClientConnection, Requests } from '@vscode/sync-api-common/node';
 import { WASI } from '@vscode/wasm-wasi/node';
 
 import { WasmRunner } from '../common/pythonWasmWorker';
 
+if (parentPort === null) {
+	process.exit();
+}
+
 class WebWasmRunner extends WasmRunner {
-	constructor() {
-		super(createMessageConnection(new PortMessageReader(parentPort!), new PortMessageWriter(parentPort!)), path);
+	constructor(port: MessagePort) {
+		super(createMessageConnection(new PortMessageReader(port), new PortMessageWriter(port)), path);
 	}
 
 	protected createClientConnection(port: MessagePort): ClientConnection<Requests> {
@@ -37,5 +36,9 @@ class WebWasmRunner extends WasmRunner {
 	}
 }
 
-const runner = new WebWasmRunner();
-runner.listen();
+
+parentPort.on('message', (port: MessagePort) => {
+	const runner = new WebWasmRunner(port);
+	runner.listen();
+	parentPort?.postMessage('ready');
+});

@@ -3,7 +3,8 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { Uri } from 'vscode';
+// We can't use Uri from vscode since vscode is not available in a web worker.
+import { URI } from 'vscode-uri';
 
 import { MessageConnection } from 'vscode-jsonrpc';
 import { WASI, Options } from '@vscode/wasm-wasi';
@@ -15,7 +16,7 @@ export abstract class WasmRunner {
 
 	private clientConnection!: ClientConnection<Requests>;
 
-	private pythonRoot!: Uri;
+	private pythonRoot!: URI;
 	private apiClient!: ApiClient;
 	private binary!: Uint8Array;
 
@@ -27,12 +28,12 @@ export abstract class WasmRunner {
 			await this.clientConnection.serviceReady();
 			this.apiClient = new ApiClient(this.clientConnection);
 
-			this.pythonRoot = Uri.parse(params.pythonRoot);
+			this.pythonRoot = URI.parse(params.pythonRoot);
 			this.binary = this.apiClient.vscode.workspace.fileSystem.readFile(this.pythonRoot.with({ path: path.join(this.pythonRoot.path, 'python.wasm') }));
 
 		});
 		connection.onRequest(ExecuteFile.type, (params) => {
-			return this.executePythonFile(Uri.parse(params.file));
+			return this.executePythonFile(URI.parse(params.file));
 		});
 		connection.onRequest(RunRepl.type, (params) => {
 			return this.runRepl();
@@ -45,7 +46,7 @@ export abstract class WasmRunner {
 
 	protected abstract createClientConnection(port: any): ClientConnection<Requests>;
 
-	protected async executePythonFile(file: Uri): Promise<number> {
+	protected async executePythonFile(file: URI): Promise<number> {
 		return this.run(file);
 	}
 
@@ -53,7 +54,7 @@ export abstract class WasmRunner {
 		return this.run();
 	}
 
-	private async run(file?: Uri): Promise<number> {
+	private async run(file?: URI): Promise<number> {
 		const path = this.path;
 		const name = 'Python WASM';
 		const workspaceFolders = this.apiClient.vscode.workspace.workspaceFolders;

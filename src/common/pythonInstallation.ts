@@ -8,15 +8,22 @@ import RemoteRepositories from './remoteRepositories';
 
 namespace PythonInstallation  {
 
+	const defaultPythonRoot = 'https://github.com/microsoft/vscode-python-web-wasm.git' as const;
+	const defaultPythonWasm = 'python/python.wasm' as const;
+
 	async function resolvePython(): Promise<[Uri, string]> {
 		let pythonRoot = workspace.getConfiguration('python.wasm').get<string | undefined | null>('runtime', undefined);
 		let pythonWasm = 'python.wasm';
-		if (pythonRoot === undefined || pythonRoot === null) {
-			pythonRoot = 'https://github.com/microsoft/vscode-python-web-wasm.git';
-			pythonWasm = 'python/python.wasm';
+		if (pythonRoot === undefined || pythonRoot === null || pythonRoot.length === 0) {
+			pythonRoot = defaultPythonRoot;
+			pythonWasm = defaultPythonWasm;
+		}
+		if (Uri.parse(pythonRoot).authority !== 'github.com') {
+			pythonRoot = defaultPythonRoot;
+			pythonWasm = defaultPythonWasm;
 		}
 		const api = await RemoteRepositories.getApi();
-		const vfs = api.getVirtualUri(Uri.parse(pythonRoot.replace('//github.com/', '//github/')));
+		const vfs = api.getVirtualUri(Uri.parse(pythonRoot)).with({ authority: 'github' });
 		return [vfs, pythonWasm];
 	}
 
