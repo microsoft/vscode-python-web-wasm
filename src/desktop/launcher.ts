@@ -7,14 +7,14 @@ import { ExtensionContext, Uri } from 'vscode';
 
 import { MessageChannel, Worker } from 'worker_threads';
 
-import { Launcher } from '../common/launcher';
+import { BaseLauncher } from '../common/launcher';
 
 import { ServiceConnection, MessageConnection } from '@vscode/sync-api-common/node';
 
 import { Requests } from '@vscode/sync-api-service';
 import { MessageRequests } from '../common/messages';
 
-export class DesktopLauncher extends Launcher {
+export class DesktopLauncher extends BaseLauncher {
 
 	private worker: Worker | undefined;
 

@@ -3,17 +3,20 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
+import RAL from './ral';
+
 import { Uri, workspace } from 'vscode';
 import RemoteRepositories from './remoteRepositories';
 
 namespace PythonInstallation  {
 
-	const defaultPythonRepository = 'https://github.com/microsoft/vscode-python-web-wasm.git' as const;
+	const defaultPythonRepository = 'https://github.com/microsoft/vscode-python-web-wasm' as const;
 	const defaultPythonRoot = 'python' as const;
 
 	let wasmBytes: Thenable<SharedArrayBuffer> | undefined;
 
-	async function resolvePython(): Promise<{ repository: Uri; root: string | undefined }> {
+	async function resolveConfiguration(): Promise<{ repository: Uri; root: string | undefined }> {
+		const path = RAL().path;
 		let pythonRepository = workspace.getConfiguration('python.wasm').get<string | undefined | null>('runtime', undefined);
 		let pythonRoot = undefined;
 		if (pythonRepository === undefined || pythonRepository === null || pythonRepository.length === 0) {
@@ -24,15 +27,19 @@ namespace PythonInstallation  {
 			pythonRepository = defaultPythonRepository;
 			pythonRoot = defaultPythonRoot;
 		}
+		const extname = path.extname(pythonRepository);
+		if (extname === '.git') {
+			pythonRepository = pythonRepository.substring(0, pythonRepository.length - extname.length);
+		}
 		const api = await RemoteRepositories.getApi();
 		const vfs = api.getVirtualUri(Uri.parse(pythonRepository)).with({ authority: 'github' });
 		return { repository: vfs, root: pythonRoot};
 	}
 
-	const configPromise: Promise<{ repository: Uri; root: string | undefined}> = resolvePython();
+	let configPromise: Promise<{ repository: Uri; root: string | undefined}> | undefined;
 
 	async function triggerPreload(): Promise<void> {
-		const {repository, root} = await configPromise;
+		const {repository, root} = await getConfig();
 		try {
 			const remoteHubApi = await RemoteRepositories.getApi();
 			if (remoteHubApi.loadWorkspaceContents !== undefined) {
@@ -51,13 +58,19 @@ namespace PythonInstallation  {
 		}
 	}
 
-	const _preload: Promise<void> = triggerPreload();
+	let _preload: Promise<void> | undefined;
 
 	export function preload(): Promise<void> {
+		if (_preload === undefined) {
+			_preload = triggerPreload();
+		}
 		return _preload;
 	}
 
 	export async function getConfig(): Promise<{ repository: Uri; root: string | undefined}> {
+		if (configPromise === undefined) {
+			configPromise = resolveConfiguration();
+		}
 		return configPromise;
 	}
 

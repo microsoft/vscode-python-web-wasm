@@ -85,7 +85,7 @@ export abstract class WasmRunner {
 			mapDir,
 			argv: toRun !== undefined ? ['python', '-X', 'utf8', toRun] : ['python', '-X', 'utf8'],
 			env: {
-				PYTHONPATH: '/workspace'
+				PYTHONPATH: '/workspace:/site-packages'
 			}
 		});
 		await this.doRun(this.binary, wasi);
