@@ -28,7 +28,7 @@ namespace PythonInstallation  {
 			pythonRoot = defaultPythonRoot;
 		}
 		const extname = path.extname(pythonRepository);
-		if (extname === '.git`') {
+		if (extname === '.git') {
 			pythonRepository = pythonRepository.substring(0, pythonRepository.length - extname.length);
 		}
 		const api = await RemoteRepositories.getApi();
