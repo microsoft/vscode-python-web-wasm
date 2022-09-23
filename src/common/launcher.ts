@@ -62,13 +62,14 @@ export abstract class Launcher {
 		}, 50);
 		syncConnection.signalReady();
 
-		const result: Promise<number> = program === undefined
+		const runRequest: Promise<number> = program === undefined
 			? messageConnection.sendRequest('runRepl', { syncPort: port }, [port])
 			: messageConnection.sendRequest('executeFile', { syncPort: port, file: program }, [port]);
 
-		result.
-			then((rval) => { this.exitResolveCallback(rval);}).
-			catch((reason) => { this.exitRejectCallback(reason); });
+		runRequest.
+			then((rval) => { this.exitResolveCallback(rval); }).
+			catch((reason) => { this.exitRejectCallback(reason); }).
+			finally(() => { void this.terminateConnection(); });
 	}
 
 	/**
