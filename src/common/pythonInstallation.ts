@@ -8,44 +8,67 @@ import RemoteRepositories from './remoteRepositories';
 
 namespace PythonInstallation  {
 
-	const defaultPythonRoot = 'https://github.com/microsoft/vscode-python-web-wasm.git' as const;
-	const defaultPythonWasm = 'python/python.wasm' as const;
+	const defaultPythonRepository = 'https://github.com/microsoft/vscode-python-web-wasm.git' as const;
+	const defaultPythonRoot = 'python' as const;
 
-	async function resolvePython(): Promise<[Uri, string]> {
-		let pythonRoot = workspace.getConfiguration('python.wasm').get<string | undefined | null>('runtime', undefined);
-		let pythonWasm = 'python.wasm';
-		if (pythonRoot === undefined || pythonRoot === null || pythonRoot.length === 0) {
+	let wasmBytes: Thenable<SharedArrayBuffer> | undefined;
+
+	async function resolvePython(): Promise<{ repository: Uri; root: string | undefined }> {
+		let pythonRepository = workspace.getConfiguration('python.wasm').get<string | undefined | null>('runtime', undefined);
+		let pythonRoot = undefined;
+		if (pythonRepository === undefined || pythonRepository === null || pythonRepository.length === 0) {
+			pythonRepository = defaultPythonRepository;
 			pythonRoot = defaultPythonRoot;
-			pythonWasm = defaultPythonWasm;
 		}
-		if (Uri.parse(pythonRoot).authority !== 'github.com') {
+		if (Uri.parse(pythonRepository).authority !== 'github.com') {
+			pythonRepository = defaultPythonRepository;
 			pythonRoot = defaultPythonRoot;
-			pythonWasm = defaultPythonWasm;
 		}
 		const api = await RemoteRepositories.getApi();
-		const vfs = api.getVirtualUri(Uri.parse(pythonRoot)).with({ authority: 'github' });
-		return [vfs, pythonWasm];
+		const vfs = api.getVirtualUri(Uri.parse(pythonRepository)).with({ authority: 'github' });
+		return { repository: vfs, root: pythonRoot};
 	}
 
-	const configPromise: Promise<[Uri, string]> = resolvePython();
+	const configPromise: Promise<{ repository: Uri; root: string | undefined}> = resolvePython();
 
-	export async function getConfig(): Promise<[Uri, string]> {
-		return configPromise;
-	}
-
-	export async function preload(): Promise<void> {
-		const [pythonRoot, pythonWasm] = await configPromise;
+	async function triggerPreload(): Promise<void> {
+		const {repository, root} = await configPromise;
 		try {
 			const remoteHubApi = await RemoteRepositories.getApi();
 			if (remoteHubApi.loadWorkspaceContents !== undefined) {
-				await remoteHubApi.loadWorkspaceContents(pythonRoot);
-				if (pythonWasm !== undefined) {
-					void workspace.fs.readFile(Uri.joinPath(pythonRoot, pythonWasm));
-				}
+				await remoteHubApi.loadWorkspaceContents(repository);
+				const binaryLocation =  root !== undefined ? Uri.joinPath(repository, root, 'python.wasm') : Uri.joinPath(repository, 'python.wasm');
+				wasmBytes = workspace.fs.readFile(binaryLocation).then(bytes => {
+					const buffer = new SharedArrayBuffer(bytes.byteLength);
+					new Uint8Array(buffer).set(bytes);
+					return buffer;
+				}, (error) => {
+					console.log(error);
+				});
 			}
 		} catch (error) {
 			console.log(error);
 		}
+	}
+
+	const _preload: Promise<void> = triggerPreload();
+
+	export function preload(): Promise<void> {
+		return _preload;
+	}
+
+	export async function getConfig(): Promise<{ repository: Uri; root: string | undefined}> {
+		return configPromise;
+	}
+
+	export async function sharedWasmBytes(): Promise<SharedArrayBuffer> {
+		if (wasmBytes === undefined) {
+			await _preload;
+		}
+		if (wasmBytes === undefined) {
+			throw new Error(`Load python.wasm file failed`);
+		}
+		return wasmBytes;
 	}
 }
 

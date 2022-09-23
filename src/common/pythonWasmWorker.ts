@@ -15,30 +15,26 @@ type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequ
 
 export abstract class WasmRunner {
 
-	private clientConnection!: ClientConnection<Requests>;
-
-	private pythonRoot!: URI;
-	private apiClient!: ApiClient;
+	private pythonRepository!: URI;
+	private pythonRoot: string | undefined;
 	private binary!: Uint8Array;
 
 	constructor(private readonly connection: MessageConnection, private readonly path: { readonly join: (...paths: string[]) => string, readonly sep: string }) {
 		this.connection = connection;
 
 		connection.onRequest('initialize', async (params) => {
-			this.clientConnection = this.createClientConnection(params.syncPort);
-			await this.clientConnection.serviceReady();
-			this.apiClient = new ApiClient(this.clientConnection);
-
-			this.pythonRoot = URI.parse(params.pythonRoot);
-			this.binary = this.apiClient.vscode.workspace.fileSystem.readFile(this.pythonRoot.with({ path: path.join(this.pythonRoot.path, 'python.wasm') }));
+			this.binary = new Uint8Array(params.binary.byteLength);
+			this.binary.set(new Uint8Array(params.binary));
+			this.pythonRepository = URI.parse(params.pythonRepository);
+			this.pythonRoot = params.pythonRoot;
 		});
 
 		connection.onRequest('executeFile', (params) => {
-			return this.executePythonFile(URI.parse(params.file));
+			return this.executePythonFile(this.createClientConnection(params.syncPort), URI.parse(params.file));
 		});
 
-		connection.onRequest('runRepl', () => {
-			return this.runRepl();
+		connection.onRequest('runRepl', (params) => {
+			return this.runRepl(this.createClientConnection(params.syncPort));
 		});
 	}
 
@@ -48,18 +44,20 @@ export abstract class WasmRunner {
 
 	protected abstract createClientConnection(port: any): ClientConnection<Requests>;
 
-	protected async executePythonFile(file: URI): Promise<number> {
-		return this.run(file);
+	protected async executePythonFile(clientConnection: ClientConnection<Requests>, file: URI): Promise<number> {
+		return this.run(clientConnection, file);
 	}
 
-	protected async runRepl(): Promise<number> {
-		return this.run();
+	protected async runRepl(clientConnection: ClientConnection<Requests>): Promise<number> {
+		return this.run(clientConnection);
 	}
 
-	private async run(file?: URI): Promise<number> {
+	private async run(clientConnection: ClientConnection<Requests>, file?: URI): Promise<number> {
+		await clientConnection.serviceReady();
+		const apiClient = new ApiClient(clientConnection);
 		const path = this.path;
 		const name = 'Python WASM';
-		const workspaceFolders = this.apiClient.vscode.workspace.workspaceFolders;
+		const workspaceFolders = apiClient.vscode.workspace.workspaceFolders;
 		const mapDir: Options['mapDir'] = [];
 		let toRun: string | undefined;
 		if (workspaceFolders.length === 1) {
@@ -75,12 +73,15 @@ export abstract class WasmRunner {
 				mapDir.push({ name: path.join(path.sep, 'workspaces', folder.name), uri: folder.uri });
 			}
 		}
-		mapDir.push({ name: path.sep, uri: this.pythonRoot });
+		const pythonInstallation = this.pythonRoot === undefined
+			? this.pythonRepository
+			: this.pythonRepository.with({ path: path.join( this.pythonRepository.path, this.pythonRoot )});
+		mapDir.push({ name: path.sep, uri: pythonInstallation });
 		let exitCode: number | undefined;
 		const exitHandler = (rval: number): void => {
 			exitCode = rval;
 		};
-		const wasi = WASI.create(name, this.apiClient, exitHandler, {
+		const wasi = WASI.create(name, apiClient, exitHandler, {
 			mapDir,
 			argv: toRun !== undefined ? ['python', '-X', 'utf8', toRun] : ['python', '-X', 'utf8'],
 			env: {

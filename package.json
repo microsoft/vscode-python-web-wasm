@@ -52,7 +52,7 @@
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run esbuild",
-		"symlink:dev": "node ./bin/symlink",
+		"symlink:vscode-wasm": "node ./bin/symlink",
 		"compile": "tsc -b ./tsconfig.json",
 		"watch": "tsc -b ./tsconfig.json -w",
 		"clean": "tsc -b tsconfig.json --clean",

@@ -44,14 +44,10 @@ export class WebLauncher extends Launcher {
 		return new MessageConnection<MessageRequests, undefined>(channel.port1);
 	}
 
-	protected async createSyncConnection(messageConnection: MessageConnection<MessageRequests, undefined>, pythonRoot: Uri, pythonWasm: string): Promise<ServiceConnection<Requests>> {
+	protected async createSyncConnection(messageConnection: MessageConnection<MessageRequests, undefined>): Promise<[ServiceConnection<Requests>, any]> {
 		const channel = new MessageChannel();
-		await messageConnection.sendRequest(
-			'initialize',
-			{ syncPort: channel.port2, pythonRoot: pythonRoot.toString(true), pythonWasm },
-			[channel.port2]
-		);
-		return new ServiceConnection<Requests>(channel.port1);
+		const result = new ServiceConnection<Requests>(channel.port1);
+		return [result, channel.port2];
 	}
 
 	protected async terminateConnection(): Promise<void> {

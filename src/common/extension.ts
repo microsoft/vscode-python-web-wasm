@@ -66,7 +66,7 @@ export function activate(context: ExtensionContext) {
 					type: 'python-web-wasm',
 					name: 'Run Python in WASM',
 					request: 'launch',
-					program: targetResource.fsPath
+					program: targetResource.toString(true)
 				},
 				{
 					noDebug: true
@@ -85,7 +85,7 @@ export function activate(context: ExtensionContext) {
 					type: 'python-web-wasm',
 					name: 'Debug Python in WASM',
 					request: 'launch',
-					program: targetResource.fsPath,
+					program: targetResource.toString(true),
 					stopOnEntry: true
 				});
 			}
@@ -97,7 +97,7 @@ export function activate(context: ExtensionContext) {
 		}),
 		commands.registerCommand('vscode-python-web-wasm.debug.getProgramName', config => {
 			return window.showInputBox({
-				placeHolder: 'Please enter the name of a markdown file in the workspace folder',
+				placeHolder: 'Please enter the name of a python file in the workspace folder',
 				value: 'app.py'
 			});
 		})

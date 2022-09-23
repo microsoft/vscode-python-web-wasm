@@ -6,19 +6,22 @@
 export type MessageRequests = {
 	method: 'initialize',
 	params: {
-		syncPort: any;
-		pythonRoot: string;
-		pythonWasm: string;
+		pythonRepository: string;
+		pythonRoot: string | undefined;
+		binary: SharedArrayBuffer
 	}
 	result: void;
 } | {
 	method: 'executeFile',
 	params: {
+		syncPort: any;
 		file: string;
 	}
 	result: number;
 } | {
 	method: 'runRepl',
-	params: undefined,
+	params: {
+		syncPort: any;
+	},
 	result: number;
 };

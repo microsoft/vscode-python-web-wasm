@@ -36,13 +36,17 @@ export abstract class Launcher {
 	 * @returns A promise that completes when the WASM is executing.
 	 */
 	public async run(context: ExtensionContext, program?: string): Promise<void> {
-		const [pythonRoot, pythonWasm] = await PythonInstallation.getConfig();
+		const [{ repository, root }, sharedWasmBytes, messageConnection] = await Promise.all([PythonInstallation.getConfig(), PythonInstallation.sharedWasmBytes(), this.createMessageConnection(context)]);
 
-		const messageConnection = await this.createMessageConnection(context);
 		messageConnection.listen();
+		// Send initialize to the worker. We could cache them in the future.
+		await messageConnection.sendRequest('initialize', {
+			pythonRepository: repository.toString(true),
+			pythonRoot: root,
+			binary: sharedWasmBytes
+		});
 
-		const syncConnection = await this.createSyncConnection(messageConnection, pythonRoot, pythonWasm);
-
+		const [syncConnection, port] = await this.createSyncConnection(messageConnection);
 		const apiService = new ApiService('Python WASM Execution', syncConnection, {
 			exitHandler: (_rval) => {
 			},
@@ -51,16 +55,16 @@ export abstract class Launcher {
 		const name = program !== undefined
 			? `Executing ${RAL().path.basename(program)}`
 			: 'Executing Python File';
+		this.terminal = window.createTerminal({ name: name, pty: apiService.getPty() });
 		// See https://github.com/microsoft/vscode/issues/160914
 		SyncRAL().timer.setTimeout(() => {
-			this.terminal = window.createTerminal({ name: name, pty: apiService.getPty() });
-			this.terminal.show();
-		}, 250);
+			this.terminal!.show();
+		}, 50);
 		syncConnection.signalReady();
 
 		const result: Promise<number> = program === undefined
-			? messageConnection.sendRequest('runRepl')
-			: messageConnection.sendRequest('executeFile', { file: program });
+			? messageConnection.sendRequest('runRepl', { syncPort: port }, [port])
+			: messageConnection.sendRequest('executeFile', { syncPort: port, file: program }, [port]);
 
 		result.
 			then((rval) => { this.exitResolveCallback(rval);}).
@@ -85,7 +89,7 @@ export abstract class Launcher {
 
 	protected abstract createMessageConnection(context: ExtensionContext): Promise<MessageConnection>;
 
-	protected abstract createSyncConnection(messageConnection: MessageConnection, pythonRoot: Uri, pythonWasm: string): Promise<ServiceConnection<Requests>>;
+	protected abstract createSyncConnection(messageConnection: MessageConnection): Promise<[ServiceConnection<Requests>, any]>;
 
 	protected abstract terminateConnection(): Promise<void>;
 }
