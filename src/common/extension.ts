@@ -12,6 +12,14 @@ import { DebugAdapter } from './debugAdapter';
 import PythonInstallation from './pythonInstallation';
 import RAL from './ral';
 
+function isCossOriginIsolated(): boolean {
+	if (RAL().isCrossOriginIsolated) {
+		return true;
+	}
+	void window.showWarningMessage(`Executing Python needs cross origin isolation. You need to \nadd ?vscode-coi= to your browser URL to enable it.`, { modal: true});
+	return false;
+}
+
 class DebugConfigurationProvider implements DebugConfigurationProvider {
 
 	constructor(private readonly preloadPromise: Promise<void>) {
@@ -22,6 +30,9 @@ class DebugConfigurationProvider implements DebugConfigurationProvider {
 	 * e.g. add all missing attributes to the debug configuration.
 	 */
 	async resolveDebugConfiguration(folder: WorkspaceFolder | undefined, config: DebugConfiguration, token?: CancellationToken): Promise<DebugConfiguration | undefined> {
+		if (!isCossOriginIsolated()) {
+			return undefined;
+		}
 		await this.preloadPromise;
 		if (!config.type && !config.request && !config.name) {
 			const editor = window.activeTextEditor;
@@ -56,6 +67,9 @@ export function activate(context: ExtensionContext) {
 	const preloadPromise = PythonInstallation.preload();
 	context.subscriptions.push(
 		commands.registerCommand('vscode-python-web-wasm.debug.runEditorContents', async (resource: Uri) => {
+			if (!isCossOriginIsolated()) {
+				return false;
+			}
 			let targetResource = resource;
 			if (!targetResource && window.activeTextEditor) {
 				targetResource = window.activeTextEditor.document.uri;
@@ -75,6 +89,9 @@ export function activate(context: ExtensionContext) {
 			return false;
 		}),
 		commands.registerCommand('vscode-python-web-wasm.debug.debugEditorContents', async (resource: Uri) => {
+			if (!isCossOriginIsolated()) {
+				return false;
+			}
 			let targetResource = resource;
 			if (!targetResource && window.activeTextEditor) {
 				targetResource = window.activeTextEditor.document.uri;
@@ -92,6 +109,9 @@ export function activate(context: ExtensionContext) {
 			return false;
 		}),
 		commands.registerCommand('vscode-python-web-wasm.repl.start', async () => {
+			if (!isCossOriginIsolated()) {
+				return false;
+			}
 			const launcher = RAL().launcher.create();
 			return launcher.run(context);
 		}),

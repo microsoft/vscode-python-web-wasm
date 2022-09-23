@@ -11,6 +11,7 @@ interface RAL {
 		create(): Launcher;
 	}
 	readonly path: IPath;
+	readonly isCrossOriginIsolated: boolean;
 }
 
 let _ral: RAL | undefined;

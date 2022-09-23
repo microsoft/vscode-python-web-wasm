@@ -54,7 +54,7 @@ export abstract class Launcher {
 		});
 		const name = program !== undefined
 			? `Executing ${RAL().path.basename(program)}`
-			: 'Executing Python File';
+			: 'Python REPL';
 		this.terminal = window.createTerminal({ name: name, pty: apiService.getPty() });
 		// See https://github.com/microsoft/vscode/issues/160914
 		SyncRAL().timer.setTimeout(() => {
