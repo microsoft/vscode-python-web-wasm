@@ -32,8 +32,9 @@
 	"dependencies": {
 		"@types/path-browserify": "^1.0.0",
 		"@vscode/debugprotocol": "1.57.0",
-		"@vscode/sync-api-service": "0.6.2",
-		"@vscode/wasm-wasi": "0.6.0",
+		"@vscode/sync-api-service": "0.7.0",
+		"@vscode/wasm-wasi": "0.7.0",
+		"vscode-uri": "^3.0.6",
 		"path-browserify": "^1.0.1"
 	},
 	"devDependencies": {
@@ -51,7 +52,7 @@
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run esbuild",
-		"symlink:dev": "node ./bin/symlink",
+		"symlink:vscode-wasm": "node ./bin/symlink",
 		"compile": "tsc -b ./tsconfig.json",
 		"watch": "tsc -b ./tsconfig.json -w",
 		"clean": "tsc -b tsconfig.json --clean",
@@ -109,6 +110,17 @@
 				"category": "Python WASM",
 				"icon": "$(play)"
 			}
-		]
+		],
+		"configuration": {
+			"type": "object",
+			"title": "Python WASM",
+			"properties": {
+				"python.wasm.runtime": {
+					"scope": "machine-overridable",
+					"type": "string",
+					"description": "A URL for a GitHub that hosts the python.wasm file together with the default Python libraries."
+				}
+			}
+		}
 	}
 }

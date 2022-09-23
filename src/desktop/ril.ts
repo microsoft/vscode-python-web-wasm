@@ -14,7 +14,8 @@ const _ril: RAL = Object.freeze<RAL>({
 			return new DesktopLauncher();
 		}
 	}),
-	path: path.posix
+	path: path.posix,
+	isCrossOriginIsolated: true
 });
 
 

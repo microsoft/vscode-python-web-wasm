@@ -6,20 +6,25 @@
 
 import * as _path from 'path';
 const path = _path.posix;
-import { parentPort  } from 'worker_threads';
+import { MessagePort, parentPort } from 'worker_threads';
+
+import { ClientConnection, Requests, MessageConnection } from '@vscode/sync-api-common/node';
+import { WASI } from '@vscode/wasm-wasi/node';
+
+import { WasmRunner } from '../common/pythonWasmWorker';
+import { MessageRequests } from '../common/messages';
 
 if (parentPort === null) {
 	process.exit();
 }
 
-import { ClientConnection, Requests } from '@vscode/sync-api-common/node';
-import { WASI } from '@vscode/wasm-wasi/node';
-
-import { WasmRunner } from '../common/pythonWasmWorker';
-
 class WebWasmRunner extends WasmRunner {
-	constructor() {
-		super(new ClientConnection<Requests>(parentPort!), path);
+	constructor(port: MessagePort) {
+		super(new MessageConnection<undefined, undefined, MessageRequests, undefined>(port), path);
+	}
+
+	protected createClientConnection(port: MessagePort): ClientConnection<Requests> {
+		return new ClientConnection<Requests>(port);
 	}
 
 	protected async doRun(binary: Uint8Array, wasi: WASI): Promise<void> {
@@ -31,5 +36,8 @@ class WebWasmRunner extends WasmRunner {
 	}
 }
 
-const runner = new WebWasmRunner();
-runner.run().catch(console.error);
+parentPort.on('message', (port: MessagePort) => {
+	const runner = new WebWasmRunner(port);
+	runner.listen();
+	parentPort?.postMessage('ready');
+});

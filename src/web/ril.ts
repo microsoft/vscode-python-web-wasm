@@ -15,7 +15,8 @@ const _ril: RAL = Object.freeze<RAL>({
 			return new WebLauncher();
 		}
 	}),
-	path: path
+	path: path,
+	isCrossOriginIsolated: crossOriginIsolated
 });
 
 

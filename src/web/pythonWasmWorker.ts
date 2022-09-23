@@ -4,14 +4,19 @@
  * ------------------------------------------------------------------------------------------ */
 import path from 'path-browserify';
 
-import { ClientConnection, Requests } from '@vscode/sync-api-common/browser';
+import { ClientConnection, Requests, MessageConnection } from '@vscode/sync-api-common/browser';
 import { WASI } from '@vscode/wasm-wasi/browser';
 
 import { WasmRunner } from '../common/pythonWasmWorker';
+import { MessageRequests } from '../common/messages';
 
 class WebWasmRunner extends WasmRunner {
-	constructor() {
-		super(new ClientConnection<Requests>(self), path);
+	constructor(port: MessagePort) {
+		super(new MessageConnection<undefined, undefined, MessageRequests, undefined>(port), path);
+	}
+
+	protected createClientConnection(port: MessagePort): ClientConnection<Requests> {
+		return new ClientConnection<Requests>(port);
 	}
 
 	protected async doRun(binary: Uint8Array, wasi: WASI): Promise<void> {
@@ -23,5 +28,8 @@ class WebWasmRunner extends WasmRunner {
 	}
 }
 
-const runner = new WebWasmRunner();
-runner.run().catch(console.error);
+self.onmessage = (event: MessageEvent<MessagePort>) => {
+	const runner = new WebWasmRunner(event.data);
+	runner.listen();
+	self.postMessage('ready');
+};

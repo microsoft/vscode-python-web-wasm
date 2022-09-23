@@ -5,11 +5,20 @@
 
 import {
 	CancellationToken, commands, debug, DebugAdapterDescriptor, DebugAdapterInlineImplementation, DebugConfiguration,
-	DebugSession, ExtensionContext, extensions, ProviderResult, Uri, window, WorkspaceFolder, workspace
+	DebugSession, ExtensionContext, Uri, window, WorkspaceFolder, workspace
 } from 'vscode';
 
 import { DebugAdapter } from './debugAdapter';
+import PythonInstallation from './pythonInstallation';
 import RAL from './ral';
+
+function isCossOriginIsolated(): boolean {
+	if (RAL().isCrossOriginIsolated) {
+		return true;
+	}
+	void window.showWarningMessage(`Executing Python needs cross origin isolation. You need to \nadd ?vscode-coi= to your browser URL to enable it.`, { modal: true});
+	return false;
+}
 
 class DebugConfigurationProvider implements DebugConfigurationProvider {
 
@@ -21,6 +30,9 @@ class DebugConfigurationProvider implements DebugConfigurationProvider {
 	 * e.g. add all missing attributes to the debug configuration.
 	 */
 	async resolveDebugConfiguration(folder: WorkspaceFolder | undefined, config: DebugConfiguration, token?: CancellationToken): Promise<DebugConfiguration | undefined> {
+		if (!isCossOriginIsolated()) {
+			return undefined;
+		}
 		await this.preloadPromise;
 		if (!config.type && !config.request && !config.name) {
 			const editor = window.activeTextEditor;
@@ -52,9 +64,12 @@ class DebugAdapterDescriptorFactory implements DebugAdapterDescriptorFactory {
 }
 
 export function activate(context: ExtensionContext) {
-	const preloadPromise = preloadPython();
+	const preloadPromise = PythonInstallation.preload();
 	context.subscriptions.push(
 		commands.registerCommand('vscode-python-web-wasm.debug.runEditorContents', async (resource: Uri) => {
+			if (!isCossOriginIsolated()) {
+				return false;
+			}
 			let targetResource = resource;
 			if (!targetResource && window.activeTextEditor) {
 				targetResource = window.activeTextEditor.document.uri;
@@ -65,7 +80,7 @@ export function activate(context: ExtensionContext) {
 					type: 'python-web-wasm',
 					name: 'Run Python in WASM',
 					request: 'launch',
-					program: targetResource.fsPath
+					program: targetResource.toString(true)
 				},
 				{
 					noDebug: true
@@ -74,6 +89,9 @@ export function activate(context: ExtensionContext) {
 			return false;
 		}),
 		commands.registerCommand('vscode-python-web-wasm.debug.debugEditorContents', async (resource: Uri) => {
+			if (!isCossOriginIsolated()) {
+				return false;
+			}
 			let targetResource = resource;
 			if (!targetResource && window.activeTextEditor) {
 				targetResource = window.activeTextEditor.document.uri;
@@ -84,19 +102,22 @@ export function activate(context: ExtensionContext) {
 					type: 'python-web-wasm',
 					name: 'Debug Python in WASM',
 					request: 'launch',
-					program: targetResource.fsPath,
+					program: targetResource.toString(true),
 					stopOnEntry: true
 				});
 			}
 			return false;
 		}),
 		commands.registerCommand('vscode-python-web-wasm.repl.start', async () => {
+			if (!isCossOriginIsolated()) {
+				return false;
+			}
 			const launcher = RAL().launcher.create();
 			return launcher.run(context);
 		}),
 		commands.registerCommand('vscode-python-web-wasm.debug.getProgramName', config => {
 			return window.showInputBox({
-				placeHolder: 'Please enter the name of a markdown file in the workspace folder',
+				placeHolder: 'Please enter the name of a python file in the workspace folder',
 				value: 'app.py'
 			});
 		})
@@ -111,30 +132,4 @@ export function activate(context: ExtensionContext) {
 
 export function deactivate(): Promise<void> {
 	return Promise.reject();
-}
-
-async function preloadPython(): Promise<void> {
-	try {
-		const remoteHub = getRemoteHubExtension();
-		if (remoteHub !== undefined) {
-			const remoteHubApi = await remoteHub.activate();
-			if (remoteHubApi.loadWorkspaceContents !== undefined) {
-				const uri = Uri.parse('vscode-vfs://github/dbaeumer/python-3.11.0rc');
-				await remoteHubApi.loadWorkspaceContents(uri);
-				void workspace.fs.readFile(Uri.joinPath(uri, 'python.wasm'));
-			}
-		}
-	} catch (error) {
-		console.log(error);
-	}
-}
-
-function getRemoteHubExtension() {
-
-	type RemoteHubApiStub = { loadWorkspaceContents?(workspaceUri: Uri): Promise<boolean> };
-	const remoteHub = extensions.getExtension<RemoteHubApiStub>('ms-vscode.remote-repositories')
-		?? extensions.getExtension<RemoteHubApiStub>('GitHub.remoteHub')
-		?? extensions.getExtension<RemoteHubApiStub>('GitHub.remoteHub-insiders');
-
-	return remoteHub;
 }
