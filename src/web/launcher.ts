@@ -8,10 +8,10 @@ import { ExtensionContext, Uri } from 'vscode';
 import { Requests } from '@vscode/sync-api-service';
 import { ServiceConnection, MessageConnection } from '@vscode/sync-api-common/browser';
 
-import { Launcher } from '../common/launcher';
+import { BaseLauncher } from '../common/launcher';
 import { MessageRequests } from '../common/messages';
 
-export class WebLauncher extends Launcher {
+export class WebLauncher extends BaseLauncher {
 
 	private worker: Worker | undefined;
 

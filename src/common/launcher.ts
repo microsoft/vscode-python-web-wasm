@@ -14,7 +14,26 @@ import { MessageRequests } from './messages';
 
 type MessageConnection = BaseMessageConnection<MessageRequests, undefined, undefined, undefined, any>;
 
-export abstract class Launcher {
+export interface Launcher {
+	/**
+	 * Run the Python WASM.
+	 *
+	 * @param context The VS Code extension context
+	 * @returns A promise that completes when the WASM is executing.
+	 */
+	run(context: ExtensionContext, program?: string): Promise<void>;
+
+	/**
+	 * A promise that resolves then the WASM finished running.
+	 *
+	 * @returns The promise.
+	 */
+	onExit(): Promise<number>;
+
+	terminate(): Promise<void>;
+}
+
+export abstract class BaseLauncher {
 
 	private readonly exitPromise: Promise<number>;
 	private exitResolveCallback!: ((value: number) => void);
