@@ -83,7 +83,7 @@ export abstract class WasmRunner {
 		};
 		const wasi = WASI.create(name, apiClient, exitHandler, {
 			mapDir,
-			argv: toRun !== undefined ? ['python', '-X', 'utf8', toRun] : ['python', '-X', 'utf8'],
+			argv: toRun !== undefined ? ['python', '-B', '-X', 'utf8', toRun] : ['python', '-B', '-X', 'utf8'],
 			env: {
 				PYTHONPATH: '/workspace:/site-packages'
 			}
