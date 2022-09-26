@@ -2,6 +2,58 @@
 
 This project provides a VS Code extension to run Python code in the Web (e.g. vscode.dev) using WebAssembly as an execution engine.
 
+# Index
+
+[Limitations](#limitations)<br>
+[Pre-requisites](#pre-requisites)<br>
+[Python Environments](#python-environments)<br>
+[Versioning](#versioning)<br>
+[Contributing](#contributing)<br>
+[Trademarks](#trademarks)<br>
+
+## Limitations
+
+The extension's intension is to serve as an experimentation environment to help the VS Code team to gain experiences about running Python code in the Web using WebAssembly technologies. It should not be used to do productive Python development since there are limitation in WebAssembly Python interpreted as well as limitations in VS Code itself.
+
+### Python interpreter limitations
+
+- no pip support.
+- no socket support.
+- no support for native Python modules.
+- no thread support. As a consequence there is no async support either.
+
+### VS Code limitations
+
+- no debug support. You can only run a Python file.
+
+## Pre-requisites
+
+The extension depends on the [Github Repositories](https://marketplace.visualstudio.com/items?itemName=GitHub.remotehub) extensions. It also requires you to authenticate with GitHub.
+
+## Python Environments
+
+The extension uses a pre-configured Python environment based on the [CPython WebAssembly builds](https://github.com/tiran/cpython-wasm-test/releases). The used build is `Python-3.11.0rc1-wasm32-wasi-16.zip`
+
+You can setup your own Python environment, included source wheel Python packages, following these steps:
+
+- create a new GitHub repository.
+- download a `wasm-wasi-16` build from https://github.com/tiran/cpython-wasm-test/releases and expand it into the root of the repository
+- to add source wheel packages do the following:
+  - create a `site-packages` folder in the root
+  - install the package using the following command `pip install my_package --target ./site-packages`. Note that you need to have a Python installation in your OS including pip.
+- commit the changes
+- change the `python.wasm.runtime` setting to point to your GitHub repository. For example:
+```
+{
+    "python.wasm.runtime": "https://github.com/dbaeumer/python-3.11.0rc"
+}
+```
+
+
+## Versioning
+
+Odd major, minor or patch version numbers indicate an insider or pre-release. So `1.0.0` is a pre-release, `0.1.0` will be a pre-release as well. `2.0.2` will be a regular release.
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
