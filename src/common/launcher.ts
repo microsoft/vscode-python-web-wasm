@@ -75,10 +75,10 @@ export abstract class BaseLauncher {
 			? `Executing ${RAL().path.basename(program)}`
 			: 'Python REPL';
 		this.terminal = window.createTerminal({ name: name, pty: apiService.getPty() });
+		this.terminal.show();
 		// See https://github.com/microsoft/vscode/issues/160914
-		SyncRAL().timer.setTimeout(() => {
-			this.terminal!.show();
-		}, 50);
+		// SyncRAL().timer.setTimeout(() => {
+		// }, 50);
 		syncConnection.signalReady();
 
 		const runRequest: Promise<number> = program === undefined
