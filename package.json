@@ -35,11 +35,13 @@
 		"@vscode/sync-api-service": "0.7.1",
 		"@vscode/wasm-wasi": "0.7.1",
 		"vscode-uri": "^3.0.6",
-		"path-browserify": "^1.0.1"
+		"path-browserify": "^1.0.1",
+		"uuid": "^9.0.0"
 	},
 	"devDependencies": {
 		"@types/node": "^16.11.57",
 		"@types/vscode": "1.71.0",
+		"@types/uuid": "8.3.4",
 		"@typescript-eslint/eslint-plugin": "^5.36.2",
 		"@typescript-eslint/parser": "^5.36.2",
 		"esbuild": "^0.15.7",
@@ -57,7 +59,8 @@
 		"watch": "tsc -b ./tsconfig.json -w",
 		"clean": "tsc -b tsconfig.json --clean",
 		"esbuild": "node ./bin/esbuild.js",
-		"serve": "serve --cors -l 5000 -c ./configs/serve.json",
+		"serve": "serve --cors -l 5000 --ssl-cert $HOME/certs/localhost.pem --ssl-key $HOME/certs/localhost-key.pem -c ./configs/serve.json",
+		"serve-tunnel": "serve --cors -l 5000 -c ./configs/serve.json",
 		"tunnel": "lt -p 5000"
 	},
 	"contributes": {

@@ -11,6 +11,7 @@ import {
 import { DebugAdapter } from './debugAdapter';
 import PythonInstallation from './pythonInstallation';
 import RAL from './ral';
+import { Terminals } from './terminals';
 
 function isCossOriginIsolated(): boolean {
 	if (RAL().isCrossOriginIsolated) {
@@ -76,11 +77,14 @@ export function activate(context: ExtensionContext) {
 			}
 			if (targetResource) {
 				await preloadPromise;
+				const pty = Terminals.reuseOrCreateTerminal(targetResource, true);
+				const data: Terminals.Data = pty.data;
 				return debug.startDebugging(undefined, {
 					type: 'python-web-wasm',
 					name: 'Run Python in WASM',
 					request: 'launch',
-					program: targetResource.toString(true)
+					program: targetResource.toString(true),
+					ptyInfo: [data[0].toString(true), data[1]]
 				},
 				{
 					noDebug: true
@@ -98,12 +102,15 @@ export function activate(context: ExtensionContext) {
 			}
 			if (targetResource) {
 				await preloadPromise;
+				const pty = Terminals.reuseOrCreateTerminal(targetResource, true);
+				const data: Terminals.Data = pty.data;
 				return debug.startDebugging(undefined, {
 					type: 'python-web-wasm',
 					name: 'Debug Python in WASM',
 					request: 'launch',
 					program: targetResource.toString(true),
-					stopOnEntry: true
+					stopOnEntry: true,
+					ptyInfo: [data[0].toString(true), data[1]]
 				});
 			}
 			return false;

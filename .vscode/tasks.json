@@ -39,17 +39,9 @@
 			"type": "npm",
 			"script": "serve",
 			"problemMatcher": [],
+			"isBackground": true,
 			"label": "npm: serve",
-			"detail": "serve --cors -l 5000 -c ./configs/serve.json",
-			"isBackground": true
-		},
-		{
-			"type": "npm",
-			"script": "tunnel",
-			"problemMatcher": [],
-			"label": "npm: tunnel",
-			"detail": "localtunnel -p 5000",
-			"isBackground": true
+			"detail": "serve --cors -l 5000 --ssl-cert $HOME/certs/localhost.pem --ssl-key $HOME/certs/localhost-key.pem -c ./configs/serve.json"
 		}
 	]
 }
