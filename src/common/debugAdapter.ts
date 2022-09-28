@@ -104,12 +104,11 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		};
 	}
 
-	private async handleLaunch(args: DebugProtocol.LaunchRequestArguments & { program?: string, ptyInfo?: [string, string] }): Promise<void> {
+	private async handleLaunch(args: DebugProtocol.LaunchRequestArguments & { program?: string, ptyInfo?: { uuid: string } }): Promise<void> {
 		let pty: ServicePseudoTerminal | undefined;
 		if (args.ptyInfo !== undefined) {
-			const resource = vscode.Uri.parse(args.ptyInfo[0]);
-			const uuid = args.ptyInfo[1];
-			pty = Terminals.getInUseTerminal(resource, uuid);
+			const uuid = args.ptyInfo.uuid;
+			pty = Terminals.getTerminalInUse(uuid);
 		}
 		return this.launch(args.program, pty);
 	}

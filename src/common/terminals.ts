@@ -3,110 +3,131 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { Terminal, Uri, window } from 'vscode';
+import { Disposable, Terminal, Uri, window } from 'vscode';
 
 import * as uuid from 'uuid';
 
-import { ServicePseudoTerminal } from '@vscode/sync-api-service';
+import { ServicePseudoTerminal, TerminalMode } from '@vscode/sync-api-service';
+import RAL from './ral';
 
 export namespace Terminals {
 
-	export type Data = [Uri, string];
-	type TerminalInfo = [Terminal, ServicePseudoTerminal];
+	export type UUID = string;
+	export type Data = { uuid: UUID };
 
-	const idleTerminals: Map<string, Map<string, TerminalInfo>> = new Map();
-	const inUseTerminals: Map<string, Map<string, TerminalInfo>> = new Map();
+	type TerminalIdleInfo = [Terminal, ServicePseudoTerminal<Data>, Disposable];
+	type TerminalInUseInfo = [Terminal, ServicePseudoTerminal<Data>];
 
-	export function getInUseTerminal(resource: Uri, uuid: string): ServicePseudoTerminal | undefined {
-		const key = resource.toString(true);
-		const inUse = inUseTerminals.get(key);
-		return inUse?.get(uuid)?.[1];
+	const idleTerminals: Map<UUID, TerminalIdleInfo> = new Map();
+	const terminalsInUse: Map<UUID, TerminalInUseInfo> = new Map();
+
+	export function getTerminalInUse(uuid: string): ServicePseudoTerminal<Data> | undefined {
+		const inUse = terminalsInUse.get(uuid);
+		return inUse?.[1];
 	}
 
-	export function reuseOrCreateTerminal(resource: Uri, show: boolean): ServicePseudoTerminal {
+	export function getExecutionTerminal(resource: Uri, show: boolean): ServicePseudoTerminal<Data> {
+		const fileName = RAL().path.basename(resource.toString(true));
+		const terminalName = `Executing ${fileName}`;
+		const header = `Executing Python file ${fileName}`;
+
+		return getTerminal(terminalName, header, show);
+	}
+
+	export function getReplTerminal(show: boolean): ServicePseudoTerminal<Data> {
+		const terminalName = `Python REPL`;
+		const header = `Running Python REPL`;
+		return getTerminal(terminalName, header, show);
+	}
+
+	function getTerminal(terminalName: string, header: string | undefined, show: boolean) {
 		// Check if we have an idle terminal
-		const key = resource.toString(true);
-		const idle = idleTerminals.get(key);
-		if (idle !== undefined && idle.size > 0) {
-			const entry = idle.entries().next();
+		if (idleTerminals.size > 0) {
+			const entry = idleTerminals.entries().next();
 			if (entry.done === false) {
-				const toUse = entry.value[1];
-				toUse[0].show();
-				return toUse[1];
+				idleTerminals.delete(entry.value[0]);
+				const info = entry.value[1];
+				info[2].dispose();
+				const terminal = info[0];
+				const pty = info[1];
+				pty.setMode(TerminalMode.inUse);
+				pty.setName(terminalName);
+				terminal.show(true);
+				if (header !== undefined) {
+					pty.write(formatMessageForTerminal(header, true, true));
+				}
+				terminalsInUse.set((pty.data as Data).uuid, [terminal, pty]);
+				return pty;
 			}
 		}
 
 		// We haven't found an idle terminal. So create a new one;
-		const pty = ServicePseudoTerminal.create();
+		const pty = ServicePseudoTerminal.create<Data>(TerminalMode.inUse);
 		const infoId = uuid.v4();
-		const data: Data = [resource, infoId];
+		const data: Data = { uuid: infoId };
 		pty.data =  data;
 		pty.onDidClose(() => {
-			gotClosed(pty);
+			clearTerminal(pty);
 
 		});
-		const terminal = window.createTerminal({ name: '', pty, isTransient: true });
+		const terminal = window.createTerminal({ name: terminalName, pty, isTransient: true });
 		if (show) {
-			terminal.show();
+			terminal.show(true);
 		}
-		terminal.sendText('Hello World');
-
-		let infos = inUseTerminals.get(key);
-		if (infos === undefined) {
-			infos = new Map();
-			inUseTerminals.set(key, infos);
+		if (header !== undefined) {
+			pty.write(formatMessageForTerminal(header, false, true));
 		}
-		infos.set(pty.data[1], [terminal, pty]);
-
+		const info: TerminalInUseInfo = [terminal, pty];
+		terminalsInUse.set(data.uuid, info);
 		return pty;
 	}
 
-	export function unUseTerminal(pty: ServicePseudoTerminal): void {
+	export function releaseExecutionTerminal(pty: ServicePseudoTerminal<Data>, terminated: boolean = false): void {
+		const footer = terminated
+			? `Python execution got terminated. The terminal will be reused, press any key to close it.`
+			: `Terminal will be reused, press any key to close it.`;
+		releaseTerminal(pty, footer);
+	}
+
+	export function releaseReplTerminal(pty: ServicePseudoTerminal<Data>, terminated: boolean = false): void {
+		const footer = terminated
+			? `Repl execution got terminated. The terminal will be reused, press any key to close it.`
+			: `Terminal will be reused, press any key to close it.`;
+		releaseTerminal(pty, footer);
+	}
+
+	function releaseTerminal(pty: ServicePseudoTerminal<Data>, footer: string): void {
 		const data: Data = pty.data;
-		const key = data[0].toString(true);
-		const inUse = inUseTerminals.get(key);
+		const uuid: UUID = data.uuid;
+		const info = terminalsInUse.get(uuid);
 		// Terminal might have gotten closed
-		if (inUse === undefined) {
-			return;
-		}
-		const info = inUse.get(data[1]);
 		if (info === undefined) {
 			return;
 		}
-		inUse.delete(data[1]);
-
-		let idle = idleTerminals.get(key);
-		if (idle === undefined) {
-			idle = new Map();
-			idleTerminals.set(key, idle);
-		}
-		idle.set(data[1], info);
+		pty.setMode(TerminalMode.idle);
+		pty.write(formatMessageForTerminal(footer, true, false));
+		const disposable = pty.onAnyKey(() => {
+			const terminal = findTerminal(pty.data.uuid);
+			clearTerminal(pty);
+			terminal?.dispose();
+		});
+		terminalsInUse.delete(uuid);
+		idleTerminals.set(uuid, [info[0], info[1], disposable]);
 	}
 
-	function markUsed(key: string, info: TerminalInfo) {
-		let inUse = inUseTerminals.get(key);
-		if (inUse === undefined) {
-			inUse = new Map();
-		}
-		inUse.set(info[1].data as string, info);
-	}
-
-	function gotClosed(pty: ServicePseudoTerminal): void {
+	function clearTerminal(pty: ServicePseudoTerminal): void {
 		const data: Data = pty.data;
-		const key = data[0].toString(true);
-		const inUse = inUseTerminals.get(key);
-		if (inUse !== undefined) {
-			inUse.delete(data[1]);
-			if (inUse.size === 0) {
-				inUseTerminals.delete(key);
-			}
-		}
-		const idle = idleTerminals.get(key);
-		if (idle !== undefined) {
-			idle.delete(data[1]);
-			if (idle.size === 0) {
-				idleTerminals.delete(key);
-			}
-		}
+		const uuid = data.uuid;
+		terminalsInUse.delete(uuid);
+		idleTerminals.delete(uuid);
+	}
+
+	function findTerminal(uuid: UUID): Terminal | undefined {
+		const info = idleTerminals.get(uuid) ?? terminalsInUse.get(uuid);
+		return info && info[0];
+	}
+
+	function formatMessageForTerminal(message: string, leadingNewLine: boolean, trailingNewLine: boolean): string {
+		return `${leadingNewLine ? '\r\n\r\n' : ''}\x1b[0m\x1b[7m * \x1b[0m ${message} \x1b[0m${trailingNewLine ? '\r\n\r\n' : ''}`;
 	}
 }

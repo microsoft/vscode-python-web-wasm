@@ -77,17 +77,19 @@ export function activate(context: ExtensionContext) {
 			}
 			if (targetResource) {
 				await preloadPromise;
-				const pty = Terminals.reuseOrCreateTerminal(targetResource, true);
-				const data: Terminals.Data = pty.data;
-				return debug.startDebugging(undefined, {
-					type: 'python-web-wasm',
-					name: 'Run Python in WASM',
-					request: 'launch',
-					program: targetResource.toString(true),
-					ptyInfo: [data[0].toString(true), data[1]]
-				},
-				{
-					noDebug: true
+				const pty = Terminals.getExecutionTerminal(targetResource, true);
+				const launcher = RAL().launcher.create();
+				const ctrlC = pty.onDidCtrlC(() => {
+					ctrlC.dispose();
+					launcher.terminate().catch(console.error);
+					Terminals.releaseExecutionTerminal(pty, true);
+				});
+				await launcher.run(context, targetResource.toString(true), pty);
+				launcher.onExit().catch(() => {
+					// todo@dirkb need to think how to handle this.
+				}).finally(() => {
+					ctrlC.dispose();
+					Terminals.releaseExecutionTerminal(pty);
 				});
 			}
 			return false;
@@ -102,7 +104,7 @@ export function activate(context: ExtensionContext) {
 			}
 			if (targetResource) {
 				await preloadPromise;
-				const pty = Terminals.reuseOrCreateTerminal(targetResource, true);
+				const pty = Terminals.getExecutionTerminal(targetResource, true);
 				const data: Terminals.Data = pty.data;
 				return debug.startDebugging(undefined, {
 					type: 'python-web-wasm',
@@ -110,7 +112,7 @@ export function activate(context: ExtensionContext) {
 					request: 'launch',
 					program: targetResource.toString(true),
 					stopOnEntry: true,
-					ptyInfo: [data[0].toString(true), data[1]]
+					ptyInfo: { uuid: data.uuid }
 				});
 			}
 			return false;
@@ -119,8 +121,21 @@ export function activate(context: ExtensionContext) {
 			if (!isCossOriginIsolated()) {
 				return false;
 			}
+			const pty = Terminals.getReplTerminal(true);
+			const ctrlC = pty.onDidCtrlC(() => {
+				ctrlC.dispose();
+				launcher.terminate().catch(console.error);
+				Terminals.releaseReplTerminal(pty, true);
+			});
 			const launcher = RAL().launcher.create();
-			return launcher.run(context);
+			await launcher.run(context, undefined, pty);
+			launcher.onExit().catch(() => {
+				// todo@dirkb need to think how to handle this.
+			}).finally(() => {
+				ctrlC.dispose();
+				Terminals.releaseReplTerminal(pty);
+			});
+			return true;
 		}),
 		commands.registerCommand('vscode-python-web-wasm.debug.getProgramName', config => {
 			return window.showInputBox({
