@@ -10,6 +10,8 @@ import { DebugProtocol } from '@vscode/debugprotocol';
 import RAL from './ral';
 import { Event, Response } from './debugMessages';
 import { Launcher } from './launcher';
+import { ServicePseudoTerminal } from '@vscode/sync-api-service';
+import { Terminals } from './terminals';
 
 export class DebugAdapter implements vscode.DebugAdapter {
 
@@ -102,8 +104,13 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		};
 	}
 
-	private async handleLaunch(args: DebugProtocol.LaunchRequestArguments & { program?: string }): Promise<void> {
-		return this.launch(args.program);
+	private async handleLaunch(args: DebugProtocol.LaunchRequestArguments & { program?: string, ptyInfo?: { uuid: string } }): Promise<void> {
+		let pty: ServicePseudoTerminal | undefined;
+		if (args.ptyInfo !== undefined) {
+			const uuid = args.ptyInfo.uuid;
+			pty = Terminals.getTerminalInUse(uuid);
+		}
+		return this.launch(args.program, pty);
 	}
 
 	private async handleTerminate(args: DebugProtocol.TerminateArguments): Promise<void> {
@@ -128,7 +135,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._sendMessage.fire(terminated);
 	}
 
-	private async launch(program?: string): Promise<void> {
+	private async launch(program?: string, pty?: ServicePseudoTerminal): Promise<void> {
 		if (this.launcher !== undefined) {
 			return;
 		}
@@ -137,7 +144,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			this.launcher = undefined;
 			this.sendTerminated();
 		}).catch(console.error);
-		await this.launcher.run(this.context, program?.replace(/\\/g, '/'));
+		await this.launcher.run(this.context, program?.replace(/\\/g, '/'), pty);
 	}
 
 	dispose() {

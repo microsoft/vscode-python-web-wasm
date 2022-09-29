@@ -5,7 +5,7 @@
 
 import { ExtensionContext, Terminal, Uri, window } from 'vscode';
 
-import { BaseMessageConnection } from '@vscode/sync-api-service';
+import { BaseMessageConnection, ServicePseudoTerminal } from '@vscode/sync-api-service';
 import { ServiceConnection, Requests, ApiService, RAL as SyncRAL} from '@vscode/sync-api-service';
 
 import RAL from './ral';
@@ -21,7 +21,7 @@ export interface Launcher {
 	 * @param context The VS Code extension context
 	 * @returns A promise that completes when the WASM is executing.
 	 */
-	run(context: ExtensionContext, program?: string): Promise<void>;
+	run(context: ExtensionContext, program?: string, pty?: ServicePseudoTerminal): Promise<void>;
 
 	/**
 	 * A promise that resolves then the WASM finished running.
@@ -54,7 +54,7 @@ export abstract class BaseLauncher {
 	 * @param context The VS Code extension context
 	 * @returns A promise that completes when the WASM is executing.
 	 */
-	public async run(context: ExtensionContext, program?: string): Promise<void> {
+	public async run(context: ExtensionContext, program?: string, pty?: ServicePseudoTerminal): Promise<void> {
 		const [{ repository, root }, sharedWasmBytes, messageConnection] = await Promise.all([PythonInstallation.getConfig(), PythonInstallation.sharedWasmBytes(), this.createMessageConnection(context)]);
 
 		messageConnection.listen();
@@ -69,16 +69,19 @@ export abstract class BaseLauncher {
 		const apiService = new ApiService('Python WASM Execution', syncConnection, {
 			exitHandler: (_rval) => {
 			},
-			echoName: false
+			echoName: false,
+			pty
 		});
 		const name = program !== undefined
 			? `Executing ${RAL().path.basename(program)}`
 			: 'Python REPL';
-		this.terminal = window.createTerminal({ name: name, pty: apiService.getPty() });
-		// See https://github.com/microsoft/vscode/issues/160914
-		SyncRAL().timer.setTimeout(() => {
-			this.terminal!.show();
-		}, 50);
+		if (pty === undefined) {
+			this.terminal = window.createTerminal({ name: name, pty: apiService.getPty() });
+			// See https://github.com/microsoft/vscode/issues/160914
+			SyncRAL().timer.setTimeout(() => {
+				this.terminal!.show();
+			}, 50);
+		}
 		syncConnection.signalReady();
 
 		const runRequest: Promise<number> = program === undefined
