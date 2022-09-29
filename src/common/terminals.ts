@@ -31,16 +31,16 @@ export namespace Terminals {
 		const terminalName = `Executing ${fileName}`;
 		const header = `Executing Python file ${fileName}`;
 
-		return getTerminal(terminalName, header, show);
+		return getTerminal(terminalName, header, show, true);
 	}
 
 	export function getReplTerminal(show: boolean): ServicePseudoTerminal<Data> {
 		const terminalName = `Python REPL`;
 		const header = `Running Python REPL`;
-		return getTerminal(terminalName, header, show);
+		return getTerminal(terminalName, header, show, false);
 	}
 
-	function getTerminal(terminalName: string, header: string | undefined, show: boolean) {
+	function getTerminal(terminalName: string, header: string | undefined, show: boolean, preserveFocus: boolean) {
 		// Check if we have an idle terminal
 		if (idleTerminals.size > 0) {
 			const entry = idleTerminals.entries().next();
@@ -52,7 +52,9 @@ export namespace Terminals {
 				const pty = info[1];
 				pty.setMode(TerminalMode.inUse);
 				pty.setName(terminalName);
-				terminal.show(true);
+				if (show) {
+					terminal.show(preserveFocus);
+				}
 				if (header !== undefined) {
 					pty.write(formatMessageForTerminal(header, true, true));
 				}
@@ -72,7 +74,7 @@ export namespace Terminals {
 		});
 		const terminal = window.createTerminal({ name: terminalName, pty, isTransient: true });
 		if (show) {
-			terminal.show(true);
+			terminal.show(preserveFocus);
 		}
 		if (header !== undefined) {
 			pty.write(formatMessageForTerminal(header, false, true));
