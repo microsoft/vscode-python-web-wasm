@@ -21,7 +21,7 @@ function isCossOriginIsolated(): boolean {
 	return false;
 }
 
-class DebugConfigurationProvider implements DebugConfigurationProvider {
+export class DebugConfigurationProvider implements DebugConfigurationProvider {
 
 	constructor(private readonly preloadPromise: Promise<void>) {
 	}
@@ -55,7 +55,7 @@ class DebugConfigurationProvider implements DebugConfigurationProvider {
 	}
 }
 
-class DebugAdapterDescriptorFactory implements DebugAdapterDescriptorFactory {
+export class DebugAdapterDescriptorFactory implements DebugAdapterDescriptorFactory {
 	constructor(private readonly context: ExtensionContext, private readonly preloadPromise: Promise<void>) {
 	}
 	async createDebugAdapterDescriptor(session: DebugSession): Promise<DebugAdapterDescriptor> {
@@ -145,11 +145,11 @@ export function activate(context: ExtensionContext) {
 		})
 	);
 
-	const provider = new DebugConfigurationProvider(preloadPromise);
-	context.subscriptions.push(debug.registerDebugConfigurationProvider('python-web-wasm', provider));
+	// const provider = new DebugConfigurationProvider(preloadPromise);
+	// context.subscriptions.push(debug.registerDebugConfigurationProvider('python-web-wasm', provider));
 
-	const factory = new DebugAdapterDescriptorFactory(context, preloadPromise);
-	context.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
+	// const factory = new DebugAdapterDescriptorFactory(context, preloadPromise);
+	// context.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
 }
 
 export function deactivate(): Promise<void> {
