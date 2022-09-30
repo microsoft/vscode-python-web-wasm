@@ -142,7 +142,8 @@ export function activate(context: ExtensionContext) {
 				placeHolder: 'Please enter the name of a python file in the workspace folder',
 				value: 'app.py'
 			});
-		})
+		}),
+		workspace.registerFileSystemProvider('python-wasm-pdb', )
 	);
 
 	const provider = new DebugConfigurationProvider(preloadPromise);

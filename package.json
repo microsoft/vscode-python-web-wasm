@@ -21,7 +21,8 @@
 	"browser": "./dist/web/extension.js",
 	"activationEvents": [
 		"onCommand:vscode-python-web-wasm.debug.runEditorContents",
-		"onCommand:vscode-python-web-wasm.repl.start"
+		"onCommand:vscode-python-web-wasm.repl.start",
+		"onFileSystem:python-wasm-pdb"
 	],
 	"extensionDependencies": [
 		"ms-vscode.remote-repositories"
