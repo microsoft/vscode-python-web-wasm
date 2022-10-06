@@ -11,7 +11,7 @@ import { BaseLauncher } from '../common/launcher';
 
 import { ServiceConnection, MessageConnection } from '@vscode/sync-api-common/node';
 
-import { Requests } from '@vscode/sync-api-service';
+import { ApiServiceConnection, Requests } from '@vscode/sync-api-service';
 import { MessageRequests } from '../common/messages';
 
 export class DesktopLauncher extends BaseLauncher {
@@ -44,9 +44,9 @@ export class DesktopLauncher extends BaseLauncher {
 		return new MessageConnection<MessageRequests, undefined>(channel.port1);
 	}
 
-	protected async createSyncConnection(messageConnection: MessageConnection<MessageRequests, undefined>): Promise<[ServiceConnection<Requests>, any]> {
+	protected async createSyncConnection(messageConnection: MessageConnection<MessageRequests, undefined>): Promise<[ApiServiceConnection, any]> {
 		const channel = new MessageChannel();
-		const result = new ServiceConnection<Requests>(channel.port1);
+		const result = new ServiceConnection<Requests, ApiServiceConnection.ReadyParams>(channel.port1);
 		return [result, channel.port2];
 	}
 

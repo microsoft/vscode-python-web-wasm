@@ -21,7 +21,10 @@
 	"browser": "./dist/web/extension.js",
 	"activationEvents": [
 		"onCommand:vscode-python-web-wasm.debug.runEditorContents",
-		"onCommand:vscode-python-web-wasm.repl.start"
+		"onCommand:vscode-python-web-wasm.repl.start",
+		"onCommand:vscode-python-web-wasm.debug.debugEditorContents",
+		"onDebugResolve:python-web-wasm",
+		"onDebug"
 	],
 	"extensionDependencies": [
 		"ms-vscode.remote-repositories"
@@ -32,8 +35,7 @@
 		"@vscode/sync-api-service": "0.7.2",
 		"@vscode/wasm-wasi": "0.7.1",
 		"vscode-uri": "^3.0.6",
-		"path-browserify": "^1.0.1",
-		"uuid": "^9.0.0"
+		"path-browserify": "^1.0.1"
 	},
 	"devDependencies": {
 		"@types/node": "^16.11.57",
@@ -61,12 +63,31 @@
 		"tunnel": "lt -p 5000"
 	},
 	"contributes": {
+		"debuggers": [
+			{
+				"type": "python-web-wasm",
+				"languages": [
+					"python"
+				],
+				"label": "Debug Python in WASM",
+				"configurationAttributes": {
+					"launch": {
+						"properties": {}
+					}
+				}
+			}
+		],
 		"menus": {
 			"editor/title/run": [
 				{
 					"command": "vscode-python-web-wasm.debug.runEditorContents",
 					"when": "resourceLangId == python",
 					"group": "navigation@1"
+				},
+				{
+					"command": "vscode-python-web-wasm.debug.debugEditorContents",
+					"when": "resourceLangId == python",
+					"group": "navigation@2"
 				}
 			]
 		},
@@ -77,6 +98,13 @@
 				"category": "Python WASM",
 				"enablement": "!inDebugMode",
 				"icon": "$(play)"
+			},
+			{
+				"command": "vscode-python-web-wasm.debug.debugEditorContents",
+				"title": "Debug Python File in WASM",
+				"category": "Python WASM",
+				"enablement": "!inDebugMode",
+				"icon": "$(debug-alt)"
 			},
 			{
 				"command": "vscode-python-web-wasm.repl.start",

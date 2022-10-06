@@ -5,7 +5,7 @@
 
 import { ExtensionContext, Terminal, Uri, window } from 'vscode';
 
-import { BaseMessageConnection, ServicePseudoTerminal } from '@vscode/sync-api-service';
+import { ApiServiceConnection, BaseMessageConnection, ServicePseudoTerminal } from '@vscode/sync-api-service';
 import { ServiceConnection, Requests, ApiService, RAL as SyncRAL} from '@vscode/sync-api-service';
 
 import RAL from './ral';
@@ -70,19 +70,16 @@ export abstract class BaseLauncher {
 			exitHandler: (_rval) => {
 			},
 			echoName: false,
-			pty
 		});
+
 		const name = program !== undefined
 			? `Executing ${RAL().path.basename(program)}`
 			: 'Python REPL';
-		if (pty === undefined) {
-			this.terminal = window.createTerminal({ name: name, pty: apiService.getPty() });
-			// See https://github.com/microsoft/vscode/issues/160914
-			SyncRAL().timer.setTimeout(() => {
-				this.terminal!.show();
-			}, 50);
+
+		if (pty !== undefined) {
+			apiService.registerTTY(pty);
 		}
-		syncConnection.signalReady();
+		apiService.signalReady();
 
 		const runRequest: Promise<number> = program === undefined
 			? messageConnection.sendRequest('runRepl', { syncPort: port }, [port])
@@ -112,7 +109,7 @@ export abstract class BaseLauncher {
 
 	protected abstract createMessageConnection(context: ExtensionContext): Promise<MessageConnection>;
 
-	protected abstract createSyncConnection(messageConnection: MessageConnection): Promise<[ServiceConnection<Requests>, any]>;
+	protected abstract createSyncConnection(messageConnection: MessageConnection): Promise<[ApiServiceConnection, any]>;
 
 	protected abstract terminateConnection(): Promise<void>;
 }

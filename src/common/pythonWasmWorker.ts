@@ -6,10 +6,11 @@
 // We can't use Uri from vscode since vscode is not available in a web worker.
 import { URI } from 'vscode-uri';
 
-import { ClientConnection, ApiClient, Requests, BaseMessageConnection } from '@vscode/sync-api-client';
+import { ApiClient, BaseMessageConnection, ApiClientConnection } from '@vscode/sync-api-client';
 import { WASI, Options } from '@vscode/wasm-wasi';
 
 import { MessageRequests } from './messages';
+import { Fdflags, Filetype, Rights } from '@vscode/wasm-wasi/lib/common/wasiTypes';
 
 type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequests, undefined, unknown>;
 
@@ -42,21 +43,23 @@ export abstract class WasmRunner {
 		this.connection.listen();
 	}
 
-	protected abstract createClientConnection(port: any): ClientConnection<Requests>;
+	protected abstract createClientConnection(port: any): ApiClientConnection;
 
-	protected async executePythonFile(clientConnection: ClientConnection<Requests>, file: URI): Promise<number> {
+	protected async executePythonFile(clientConnection: ApiClientConnection, file: URI): Promise<number> {
 		return this.run(clientConnection, file);
 	}
 
-	protected async runRepl(clientConnection: ClientConnection<Requests>): Promise<number> {
+	protected async runRepl(clientConnection: ApiClientConnection): Promise<number> {
 		return this.run(clientConnection);
 	}
 
-	private async run(clientConnection: ClientConnection<Requests>, file?: URI): Promise<number> {
-		await clientConnection.serviceReady();
+	private async run(clientConnection: ApiClientConnection, file?: URI): Promise<number> {
+		debugger;
 		const apiClient = new ApiClient(clientConnection);
+		const stdio = (await apiClient.serviceReady()).stdio;
 		const path = this.path;
-		const name = 'Python WASM';
+		// The is the name of the wasm to be execute (e.g. comparable to users typing it in bash)
+		const name = 'python';
 		const workspaceFolders = apiClient.vscode.workspace.workspaceFolders;
 		const mapDir: Options['mapDir'] = [];
 		let toRun: string | undefined;
@@ -77,13 +80,33 @@ export abstract class WasmRunner {
 			? this.pythonRepository
 			: this.pythonRepository.with({ path: path.join( this.pythonRepository.path, this.pythonRoot )});
 		mapDir.push({ name: path.sep, uri: pythonInstallation });
+		const mapFile: Options['mapFile'] = [];
+		mapFile.push({
+			name: '/debug/input',
+			fileDescriptor: {
+				uri: URI.from({ scheme: 'python-web-wasm-debug', path: '/input'}),
+				filetype: Filetype.character_device,
+				fdflags: 0,
+				rights: { inheriting: Rights.CharacterDeviceInheriting, base: Rights.CharacterDeviceBase | Rights.path_open }
+			}
+		}, {
+			name: '/debug/output',
+			fileDescriptor: {
+				uri: URI.from({ scheme: 'python-web-wasm-debug', path: '/output'}),
+				filetype: Filetype.character_device,
+				fdflags: 0,
+				rights: { inheriting: Rights.CharacterDeviceInheriting, base: Rights.CharacterDeviceBase | Rights.path_open }
+			}
+		});
 		let exitCode: number | undefined;
 		const exitHandler = (rval: number): void => {
 			exitCode = rval;
 		};
 		const wasi = WASI.create(name, apiClient, exitHandler, {
+			stdio,
 			mapDir,
-			argv: toRun !== undefined ? ['python', '-B', '-X', 'utf8', toRun] : ['python', '-B', '-X', 'utf8'],
+			mapFile,
+			argv: toRun !== undefined ? ['-B', '-X', 'utf8', toRun] : ['-B', '-X', 'utf8'],
 			env: {
 				PYTHONPATH: '/workspace:/site-packages'
 			}

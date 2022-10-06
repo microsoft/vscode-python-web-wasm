@@ -9,7 +9,7 @@ const path = _path.posix;
 import { MessagePort, parentPort } from 'worker_threads';
 
 import { ClientConnection, Requests, MessageConnection } from '@vscode/sync-api-common/node';
-import { WASI } from '@vscode/wasm-wasi/node';
+import { ApiClientConnection, WASI } from '@vscode/wasm-wasi/node';
 
 import { WasmRunner } from '../common/pythonWasmWorker';
 import { MessageRequests } from '../common/messages';
@@ -23,8 +23,8 @@ class WebWasmRunner extends WasmRunner {
 		super(new MessageConnection<undefined, undefined, MessageRequests, undefined>(port), path);
 	}
 
-	protected createClientConnection(port: MessagePort): ClientConnection<Requests> {
-		return new ClientConnection<Requests>(port);
+	protected createClientConnection(port: MessagePort): ApiClientConnection {
+		return new ClientConnection<Requests, ApiClientConnection.ReadyParams>(port);
 	}
 
 	protected async doRun(binary: Uint8Array, wasi: WASI): Promise<void> {

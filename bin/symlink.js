@@ -19,4 +19,5 @@ const node_modules = 'node_modules';
 	await ln.softLink(path.join(wasmRoot, 'sync-api-common'), path.join(extRoot, node_modules, '@vscode', 'sync-api-common'));
 	await ln.softLink(path.join(wasmRoot, 'sync-api-client'), path.join(extRoot, node_modules, '@vscode', 'sync-api-client'));
 	await ln.softLink(path.join(wasmRoot, 'sync-api-service'), path.join(extRoot, node_modules, '@vscode', 'sync-api-service'));
+	await ln.softLink(path.join(wasmRoot, 'wasm-wasi'), path.join(extRoot, node_modules, '@vscode', 'wasm-wasi'));
 })();
