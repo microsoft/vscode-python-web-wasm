@@ -4,11 +4,8 @@
  * ------------------------------------------------------------------------------------------ */
 
 import {
-	CancellationToken, commands, debug, DebugAdapterDescriptor, DebugAdapterInlineImplementation, DebugConfiguration,
-	DebugSession, ExtensionContext, Uri, window, WorkspaceFolder, workspace
-} from 'vscode';
+	commands, ExtensionContext, Uri, window} from 'vscode';
 
-import { DebugAdapter } from './debugAdapter';
 import PythonInstallation from './pythonInstallation';
 import RAL from './ral';
 import { Terminals } from './terminals';
@@ -19,49 +16,6 @@ function isCossOriginIsolated(): boolean {
 	}
 	void window.showWarningMessage(`Executing Python needs cross origin isolation. You need to \nadd ?vscode-coi= to your browser URL to enable it.`, { modal: true});
 	return false;
-}
-
-export class DebugConfigurationProvider implements DebugConfigurationProvider {
-
-	constructor(private readonly preloadPromise: Promise<void>) {
-	}
-
-	/**
-	 * Massage a debug configuration just before a debug session is being launched,
-	 * e.g. add all missing attributes to the debug configuration.
-	 */
-	async resolveDebugConfiguration(folder: WorkspaceFolder | undefined, config: DebugConfiguration, token?: CancellationToken): Promise<DebugConfiguration | undefined> {
-		if (!isCossOriginIsolated()) {
-			return undefined;
-		}
-		await this.preloadPromise;
-		if (!config.type && !config.request && !config.name) {
-			const editor = window.activeTextEditor;
-			if (editor && editor.document.languageId === 'python') {
-				config.type = 'python-web-wasm';
-				config.name = 'Launch';
-				config.request = 'launch';
-				config.program = '${file}';
-				config.stopOnEntry = false;
-			}
-		}
-
-		if (!config.program) {
-			await window.showInformationMessage('Cannot find a Python file to debug');
-			return undefined;
-		}
-
-		return config;
-	}
-}
-
-export class DebugAdapterDescriptorFactory implements DebugAdapterDescriptorFactory {
-	constructor(private readonly context: ExtensionContext, private readonly preloadPromise: Promise<void>) {
-	}
-	async createDebugAdapterDescriptor(session: DebugSession): Promise<DebugAdapterDescriptor> {
-		await this.preloadPromise;
-		return new DebugAdapterInlineImplementation(new DebugAdapter(session, this.context));
-	}
 }
 
 export function activate(context: ExtensionContext) {
@@ -94,29 +48,6 @@ export function activate(context: ExtensionContext) {
 			}
 			return false;
 		}),
-		commands.registerCommand('vscode-python-web-wasm.debug.debugEditorContents', async (resource: Uri) => {
-			if (!isCossOriginIsolated()) {
-				return false;
-			}
-			let targetResource = resource;
-			if (!targetResource && window.activeTextEditor) {
-				targetResource = window.activeTextEditor.document.uri;
-			}
-			if (targetResource) {
-				await preloadPromise;
-				const pty = Terminals.getExecutionTerminal(targetResource, true);
-				const data: Terminals.Data = pty.data;
-				return debug.startDebugging(undefined, {
-					type: 'python-web-wasm',
-					name: 'Debug Python in WASM',
-					request: 'launch',
-					program: targetResource.toString(true),
-					stopOnEntry: true,
-					ptyInfo: { uuid: data.uuid }
-				});
-			}
-			return false;
-		}),
 		commands.registerCommand('vscode-python-web-wasm.repl.start', async () => {
 			if (!isCossOriginIsolated()) {
 				return false;
@@ -144,12 +75,7 @@ export function activate(context: ExtensionContext) {
 			});
 		})
 	);
-
-	// const provider = new DebugConfigurationProvider(preloadPromise);
-	// context.subscriptions.push(debug.registerDebugConfigurationProvider('python-web-wasm', provider));
-
-	// const factory = new DebugAdapterDescriptorFactory(context, preloadPromise);
-	// context.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
+	return preloadPromise;
 }
 
 export function deactivate(): Promise<void> {

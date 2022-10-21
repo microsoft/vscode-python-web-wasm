@@ -5,13 +5,20 @@
 
 import type { IPath } from './path';
 import type { Launcher } from './launcher';
+import { Spawner } from './spawner';
 
 interface RAL {
 	readonly launcher: {
 		create(): Launcher;
 	}
+	readonly spawner: {
+		create(): Spawner;
+	}
 	readonly path: IPath;
 	readonly isCrossOriginIsolated: boolean;
+	readonly timer: {
+		setTimeout(callback: () => void, timeout: number): any;
+	}
 }
 
 let _ral: RAL | undefined;

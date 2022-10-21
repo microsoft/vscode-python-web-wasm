@@ -8,11 +8,23 @@ import path from 'path-browserify';
 import RAL from '../common/ral';
 import { Launcher } from '../common/launcher';
 import { WebLauncher } from './launcher';
+import { Spawner } from '../common/spawner';
+import { WebSpawner } from './spawner';
 
 const _ril: RAL = Object.freeze<RAL>({
 	launcher: Object.freeze({
 		create(): Launcher {
 			return new WebLauncher();
+		}
+	}),
+	spawner: Object.freeze({
+		create(): Spawner {
+			return new WebSpawner();
+		}
+	}),
+	timer: Object.freeze({
+		setTimeout(callback: () => void, timeoutMs: number): any {
+			return setTimeout(callback,timeoutMs);
 		}
 	}),
 	path: path,

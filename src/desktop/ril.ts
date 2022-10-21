@@ -7,11 +7,23 @@ import path from 'path';
 import RAL from '../common/ral';
 import { Launcher } from '../common/launcher';
 import { DesktopLauncher } from './launcher';
+import { DesktopSpawner } from './spawner';
+import { Spawner } from '../common/spawner';
 
 const _ril: RAL = Object.freeze<RAL>({
 	launcher: Object.freeze({
 		create(): Launcher {
 			return new DesktopLauncher();
+		}
+	}),
+	spawner: Object.freeze({
+		create(): Spawner {
+			return new DesktopSpawner();
+		}
+	}),
+	timer: Object.freeze({
+		setTimeout(callback: () => void, timeoutMs: number): any {
+			return setTimeout(callback,timeoutMs);
 		}
 	}),
 	path: path.posix,
