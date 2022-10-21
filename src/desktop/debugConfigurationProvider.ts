@@ -34,7 +34,7 @@ export class DesktopDebugConfigurationProvider implements DebugConfigurationProv
 			config.stopOnEntry = true;
 		}
 
-		if (!config.program) {
+		if (!config.file && !config.module) {
 			await window.showInformationMessage('Cannot find a Python file to debug');
 			return undefined;
 		}

@@ -8,8 +8,8 @@ class NodeDesktopSpawnee extends BaseSpawnee implements Spawnee {
 
 	constructor(private readonly process: ChildProcess) {
 		super();
-		process.stdout?.on('data', this.fireStdout.bind(this));
-		process.stderr?.on('data', this.fireStderr.bind(this._stdoutEmitter));
+		process.stdout?.on('data', this._decodeAndFire.bind(this, this.fireStdout.bind(this)));
+		process.stderr?.on('data', this._decodeAndFire.bind(this, this.fireStderr.bind(this)));
 		process.on('exit', this._exitEmitter.fire.bind(this._exitEmitter));
 	}
 	stdin(data: string): void {
@@ -25,6 +25,12 @@ class NodeDesktopSpawnee extends BaseSpawnee implements Spawnee {
 	}
 	kill(): void {
 		this.process.kill();
+	}
+	_decodeData(data: Buffer) {
+		return this._textDecoder.decode(data);
+	}
+	_decodeAndFire(fire: (s: string) => void, data: Buffer) {
+		fire(this._decodeData(data));
 	}
 
 }
