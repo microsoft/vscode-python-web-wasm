@@ -77,7 +77,7 @@ export abstract class BaseLauncher {
 			: 'Python REPL';
 
 		if (pty !== undefined) {
-			apiService.registerTTY(pty);
+			apiService.registerCharacterDeviceDriver(pty, true);
 		}
 		apiService.signalReady();
 

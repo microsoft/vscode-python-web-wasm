@@ -7,10 +7,9 @@
 import { URI } from 'vscode-uri';
 
 import { ApiClient, BaseMessageConnection, ApiClientConnection } from '@vscode/sync-api-client';
-import { WASI, Options } from '@vscode/wasm-wasi';
+import { WASI, DeviceDescription } from '@vscode/wasm-wasi';
 
 import { MessageRequests } from './messages';
-import { Fdflags, Filetype, Rights } from '@vscode/wasm-wasi/lib/common/wasiTypes';
 
 type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequests, undefined, unknown>;
 
@@ -61,11 +60,11 @@ export abstract class WasmRunner {
 		// The is the name of the wasm to be execute (e.g. comparable to users typing it in bash)
 		const name = 'python';
 		const workspaceFolders = apiClient.vscode.workspace.workspaceFolders;
-		const mapDir: Options['mapDir'] = [];
+		const devices: DeviceDescription[] = [];
 		let toRun: string | undefined;
 		if (workspaceFolders.length === 1) {
 			const folderUri = workspaceFolders[0].uri;
-			mapDir.push({ name: path.join(path.sep, 'workspace'), uri: folderUri });
+			devices.push({ kind: 'fileSystem',  uri: workspaceFolders[0].uri, mountPoint: path.join(path.sep, 'workspace') });
 			if (file !== undefined) {
 				if (file.toString().startsWith(folderUri.toString())) {
 					toRun = path.join(path.sep, 'workspace', file.toString().substring(folderUri.toString().length));
@@ -73,40 +72,19 @@ export abstract class WasmRunner {
 			}
 		} else {
 			for (const folder of workspaceFolders) {
-				mapDir.push({ name: path.join(path.sep, 'workspaces', folder.name), uri: folder.uri });
+				devices.push({ kind: 'fileSystem',  uri: folder.uri, mountPoint: path.join(path.sep, 'workspaces', folder.name) });
 			}
 		}
 		const pythonInstallation = this.pythonRoot === undefined
 			? this.pythonRepository
 			: this.pythonRepository.with({ path: path.join( this.pythonRepository.path, this.pythonRoot )});
-		mapDir.push({ name: path.sep, uri: pythonInstallation });
-		const mapFile: Options['mapFile'] = [];
-		mapFile.push({
-			name: '/debug/input',
-			fileDescriptor: {
-				uri: URI.from({ scheme: 'python-web-wasm-debug', path: '/input'}),
-				filetype: Filetype.character_device,
-				fdflags: 0,
-				rights: { inheriting: Rights.CharacterDeviceInheriting, base: Rights.CharacterDeviceBase | Rights.path_open }
-			}
-		}, {
-			name: '/debug/output',
-			fileDescriptor: {
-				uri: URI.from({ scheme: 'python-web-wasm-debug', path: '/output'}),
-				filetype: Filetype.character_device,
-				fdflags: 0,
-				rights: { inheriting: Rights.CharacterDeviceInheriting, base: Rights.CharacterDeviceBase | Rights.path_open }
-			}
-		});
+		devices.push({ kind: 'fileSystem', uri: pythonInstallation, mountPoint: path.sep});
 		let exitCode: number | undefined;
 		const exitHandler = (rval: number): void => {
 			exitCode = rval;
 		};
-		const wasi = WASI.create(name, apiClient, exitHandler, {
-			stdio,
-			mapDir,
-			mapFile,
-			argv: toRun !== undefined ? ['-B', '-X', 'utf8', toRun] : ['-B', '-X', 'utf8'],
+		const wasi = WASI.create(name, apiClient, exitHandler, devices, stdio, {
+			args: toRun !== undefined ? ['-B', '-X', 'utf8', toRun] : ['-B', '-X', 'utf8'],
 			env: {
 				PYTHONPATH: '/workspace:/site-packages'
 			}

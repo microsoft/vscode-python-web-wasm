@@ -51,7 +51,7 @@ export namespace Terminals {
 					terminal.show(preserveFocus);
 				}
 				if (header !== undefined) {
-					pty.write(formatMessageForTerminal(header, true, true));
+					pty.writeString(formatMessageForTerminal(header, true, true));
 				}
 				terminalsInUse.set(pty.id, [terminal, pty]);
 				return pty;
@@ -70,7 +70,7 @@ export namespace Terminals {
 			terminal.show(preserveFocus);
 		}
 		if (header !== undefined) {
-			pty.write(formatMessageForTerminal(header, false, true));
+			pty.writeString(formatMessageForTerminal(header, false, true));
 		}
 		const info: TerminalInUseInfo = [terminal, pty];
 		terminalsInUse.set(pty.id, info);
@@ -99,7 +99,7 @@ export namespace Terminals {
 			return;
 		}
 		pty.setMode(TerminalMode.idle);
-		pty.write(formatMessageForTerminal(footer, true, false));
+		pty.writeString(formatMessageForTerminal(footer, true, false));
 		const disposable = pty.onAnyKey(() => {
 			const terminal = findTerminal(pty.id);
 			clearTerminal(pty);

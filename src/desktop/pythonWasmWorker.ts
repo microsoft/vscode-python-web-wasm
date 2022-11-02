@@ -18,7 +18,7 @@ if (parentPort === null) {
 	process.exit();
 }
 
-class WebWasmRunner extends WasmRunner {
+class NodeWasmRunner extends WasmRunner {
 	constructor(port: MessagePort) {
 		super(new MessageConnection<undefined, undefined, MessageRequests, undefined>(port), path);
 	}
@@ -37,7 +37,7 @@ class WebWasmRunner extends WasmRunner {
 }
 
 parentPort.on('message', (port: MessagePort) => {
-	const runner = new WebWasmRunner(port);
+	const runner = new NodeWasmRunner(port);
 	runner.listen();
 	parentPort?.postMessage('ready');
 });
