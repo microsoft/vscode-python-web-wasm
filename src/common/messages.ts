@@ -19,6 +19,13 @@ export type MessageRequests = {
 	}
 	result: number;
 } | {
+	method: 'debugFile',
+	params: {
+		syncPort: any;
+		file: string;
+	}
+	result: number;
+} | {
 	method: 'runRepl',
 	params: {
 		syncPort: any;

@@ -109,8 +109,8 @@ export function activate(context: ExtensionContext) {
 					type: 'python-web-wasm',
 					name: 'Debug Python in WASM',
 					request: 'launch',
-					program: targetResource.toString(true),
 					stopOnEntry: true,
+					program: targetResource.toString(true),
 					ptyInfo: { uuid: pty.id }
 				});
 			}
@@ -127,7 +127,7 @@ export function activate(context: ExtensionContext) {
 				Terminals.releaseReplTerminal(pty, true);
 			});
 			const launcher = RAL().launcher.create();
-			await launcher.run(context, undefined, pty);
+			await launcher.startRepl(context, pty);
 			launcher.onExit().catch(() => {
 				// todo@dirkb need to think how to handle this.
 			}).finally(() => {

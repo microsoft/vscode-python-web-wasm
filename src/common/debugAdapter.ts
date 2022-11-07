@@ -46,7 +46,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 				this._sendMessage.fire(response);
 				break;
 			case 'launch':
-				await this.handleLaunch(request.arguments as DebugProtocol.LaunchRequestArguments);
+				await this.handleLaunch(request.arguments as DebugProtocol.LaunchRequestArguments & { program: string, ptyInfo: { uuid: string } });
 				this._sendMessage.fire(new Response(request));
 				break;
 			case 'terminate':
@@ -104,12 +104,10 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		};
 	}
 
-	private async handleLaunch(args: DebugProtocol.LaunchRequestArguments & { program?: string, ptyInfo?: { uuid: string } }): Promise<void> {
+	private async handleLaunch(args: DebugProtocol.LaunchRequestArguments & { program: string, ptyInfo: { uuid: string } }): Promise<void> {
 		let pty: ServicePseudoTerminal | undefined;
-		if (args.ptyInfo !== undefined) {
-			const uuid = args.ptyInfo.uuid;
-			pty = Terminals.getTerminalInUse(uuid);
-		}
+		const uuid = args.ptyInfo.uuid;
+		pty = Terminals.getTerminalInUse(uuid)!;
 		return this.launch(args.program, pty);
 	}
 
@@ -125,9 +123,12 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		if (this.launcher === undefined) {
 			return;
 		}
+		const state = this.launcher.getState();
 		await this.launcher.terminate();
 		this.launcher = undefined;
-		await this.launch();
+		if (state !== undefined) {
+			await this.launch(state.program!, state.pty);
+		}
 	}
 
 	private sendTerminated(): void {
@@ -135,7 +136,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._sendMessage.fire(terminated);
 	}
 
-	private async launch(program?: string, pty?: ServicePseudoTerminal): Promise<void> {
+	private async launch(program: string, pty: ServicePseudoTerminal): Promise<void> {
 		if (this.launcher !== undefined) {
 			return;
 		}
@@ -144,7 +145,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			this.launcher = undefined;
 			this.sendTerminated();
 		}).catch(console.error);
-		await this.launcher.run(this.context, program?.replace(/\\/g, '/'), pty);
+		await this.launcher.debug(this.context, program.replace(/\\/g, '/'), pty);
 	}
 
 	dispose() {

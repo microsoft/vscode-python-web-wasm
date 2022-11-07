@@ -35,7 +35,8 @@
 		"@vscode/sync-api-service": "0.7.2",
 		"@vscode/wasm-wasi": "0.7.1",
 		"vscode-uri": "^3.0.6",
-		"path-browserify": "^1.0.1"
+		"path-browserify": "^1.0.1",
+		"uuid": "9.0.0"
 	},
 	"devDependencies": {
 		"@types/node": "^16.11.57",

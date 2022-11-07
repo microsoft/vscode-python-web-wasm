@@ -9,6 +9,7 @@ import { URI } from 'vscode-uri';
 import { ApiClient, BaseMessageConnection, ApiClientConnection } from '@vscode/sync-api-client';
 import { WASI, DeviceDescription } from '@vscode/wasm-wasi';
 
+import * as dbgfs from './debugFileSystem';
 import { MessageRequests } from './messages';
 
 type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequests, undefined, unknown>;
@@ -79,6 +80,13 @@ export abstract class WasmRunner {
 			? this.pythonRepository
 			: this.pythonRepository.with({ path: path.join( this.pythonRepository.path, this.pythonRoot )});
 		devices.push({ kind: 'fileSystem', uri: pythonInstallation, mountPoint: path.sep});
+		devices.push({
+			kind:'custom',
+			uri: pythonInstallation,
+			factory: (apiClient, encoder, _decoder, fileDescriptorId) => {
+				return dbgfs.create(apiClient, encoder, fileDescriptorId, pythonInstallation, '');
+			}
+		});
 		let exitCode: number | undefined;
 		const exitHandler = (rval: number): void => {
 			exitCode = rval;

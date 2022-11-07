@@ -20,7 +20,7 @@ class DebugFileDescriptor extends BaseFileDescriptor {
 	}
 }
 
-export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileDescriptorId: { next(): number }, mainContent: string, uri: URI): FileSystemDeviceDriver {
+export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileDescriptorId: { next(): number }, uri: URI, mainContent: string): FileSystemDeviceDriver {
 
 	const deviceId = DeviceIds.next();
 	const fileDescriptorParams: Map<string, [filetype, rights /* base */, rights /* inheriting */, fdflags, bigint /* inode */ ]> = new Map([
