@@ -20,7 +20,7 @@ class DebugFileDescriptor extends BaseFileDescriptor {
 	}
 }
 
-export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileDescriptorId: { next(): number }, uri: URI, mainContent: string): FileSystemDeviceDriver {
+export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileDescriptorId: { next(): number }, posix_path: { readonly join: (...paths: string[]) => string, readonly sep: string }, uri: URI, mainContent: string): FileSystemDeviceDriver {
 
 	const deviceId = DeviceIds.next();
 	const fileDescriptorParams: Map<string, [filetype, rights /* base */, rights /* inheriting */, fdflags, bigint /* inode */ ]> = new Map([
@@ -29,7 +29,7 @@ export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileD
 		['/input', [Filetype.character_device, Rights.CharacterDeviceBase, Rights.CharacterDeviceInheriting, 0,  2n]],
 		['/output', [Filetype.character_device, Rights.CharacterDeviceBase, Rights.CharacterDeviceInheriting, 0,  3n]],
 	]);
-	const preOpenDirectories: string[] = ['/'];
+	const preOpenDirectories: string[] = ['/$debug'];
 
 	function createFileDescriptor(fd: fd, filetype: filetype, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint, path: string): DebugFileDescriptor {
 		return new DebugFileDescriptor(deviceId, fd, filetype, rights_base, rights_inheriting, fdflags, inode, path);
@@ -57,27 +57,24 @@ export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileD
 			if (next === undefined) {
 				return undefined;
 			}
-			const params = fileDescriptorParams.get(next);
+			const params = fileDescriptorParams.get('/');
 			if (params === undefined) {
 				throw new WasiError(Errno.noent);
 			}
 			return [
 				next,
-				createFileDescriptor(fd, ...params, next)
+				createFileDescriptor(fd, ...params, '/')
 			];
 		},
 		path_open(parentDescriptor: FileDescriptor, _dirflags: lookupflags, path: string, _oflags: oflags, fs_rights_base: rights, fs_rights_inheriting: rights, fdflags: fdflags): FileDescriptor {
 			assertDirectoryDescriptor(parentDescriptor);
 
-			if (path === '.') {
-				path = parentDescriptor.path;
-			}
-
-			const params = fileDescriptorParams.get(path);
+			const filePath = posix_path.join(parentDescriptor.path, path);
+			const params = fileDescriptorParams.get(filePath);
 			if (params === undefined) {
 				throw new WasiError(Errno.noent);
 			}
-			return createFileDescriptor(fileDescriptorId.next(), params[0], params[1] | fs_rights_base, params[2] | fs_rights_inheriting, params[3], params[4], path);
+			return createFileDescriptor(fileDescriptorId.next(), params[0], params[1] | fs_rights_base, params[2] | fs_rights_inheriting, params[3], params[4], filePath);
 		},
 		fd_fdstat_get(fileDescriptor: FileDescriptor, result: fdstat): void {
 			result.fs_filetype = fileDescriptor.fileType;
@@ -88,7 +85,7 @@ export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileD
 		fd_filestat_get(fileDescriptor: FileDescriptor, result: filestat): void {
 			result.dev = fileDescriptor.deviceId;
 			result.ino = fileDescriptor.inode;
-			result.filetype = Filetype.character_device;
+			result.filetype = fileDescriptor.fileType;
 			result.nlink = 0n;
 			result.size = 101n;
 			const now = BigInt(Date.now());

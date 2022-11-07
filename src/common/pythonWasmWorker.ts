@@ -94,7 +94,7 @@ export abstract class WasmRunner {
 			kind:'custom',
 			uri: debugUri,
 			factory: (apiClient, encoder, _decoder, fileDescriptorId) => {
-				return dbgfs.create(apiClient, encoder, fileDescriptorId, debugUri, `print('Debug is active')`);
+				return dbgfs.create(apiClient, encoder, fileDescriptorId, this.path, debugUri, `print('Debug is active')`);
 			}
 		});
 		//}
