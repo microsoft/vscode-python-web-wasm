@@ -138,15 +138,17 @@ export abstract class BaseLauncher {
 		});
 
 		apiService.registerCharacterDeviceDriver(pty, true);
+		let debugCharacterDeviceDriver: DebugCharacterDeviceDriver | undefined;
 		if (mode === 'debug') {
-			apiService.registerCharacterDeviceDriver(new DebugCharacterDeviceDriver(), false);
+			debugCharacterDeviceDriver = new DebugCharacterDeviceDriver();
+			apiService.registerCharacterDeviceDriver(debugCharacterDeviceDriver, false);
 		}
 		apiService.signalReady();
 
 		const runRequest: Promise<number> = mode === 'run'
 			? messageConnection.sendRequest('executeFile', { syncPort: port, file: program! }, [port])
 			: mode === 'debug'
-				? messageConnection.sendRequest('debugFile', { syncPort: port, file: program! }, [port])
+				? messageConnection.sendRequest('debugFile', { syncPort: port, file: program!, uri: debugCharacterDeviceDriver!.uri}, [port])
 				: messageConnection.sendRequest('runRepl', { syncPort: port }, [port]);
 
 		runRequest.

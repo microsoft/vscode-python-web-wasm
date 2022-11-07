@@ -34,6 +34,10 @@ export abstract class WasmRunner {
 			return this.executePythonFile(this.createClientConnection(params.syncPort), URI.parse(params.file));
 		});
 
+		connection.onRequest('debugFile', (params) => {
+			return this.debugPythonFile(this.createClientConnection(params.syncPort), URI.parse(params.file), URI.from(params.uri));
+		});
+
 		connection.onRequest('runRepl', (params) => {
 			return this.runRepl(this.createClientConnection(params.syncPort));
 		});
@@ -49,11 +53,15 @@ export abstract class WasmRunner {
 		return this.run(clientConnection, file);
 	}
 
+	protected async debugPythonFile(clientConnection: ApiClientConnection, file: URI, debug: URI): Promise<number> {
+		return this.run(clientConnection, file, debug);
+	}
+
 	protected async runRepl(clientConnection: ApiClientConnection): Promise<number> {
 		return this.run(clientConnection);
 	}
 
-	private async run(clientConnection: ApiClientConnection, file?: URI): Promise<number> {
+	private async run(clientConnection: ApiClientConnection, file?: URI, debug?: URI): Promise<number> {
 		debugger;
 		const apiClient = new ApiClient(clientConnection);
 		const stdio = (await apiClient.serviceReady()).stdio;
@@ -80,13 +88,16 @@ export abstract class WasmRunner {
 			? this.pythonRepository
 			: this.pythonRepository.with({ path: path.join( this.pythonRepository.path, this.pythonRoot )});
 		devices.push({ kind: 'fileSystem', uri: pythonInstallation, mountPoint: path.sep});
+		// if (debug !== undefined) {
+		let debugUri: URI = debug ?? URI.from({ scheme: 'debug', authority: 'global'});
 		devices.push({
 			kind:'custom',
-			uri: pythonInstallation,
+			uri: debugUri,
 			factory: (apiClient, encoder, _decoder, fileDescriptorId) => {
-				return dbgfs.create(apiClient, encoder, fileDescriptorId, pythonInstallation, '');
+				return dbgfs.create(apiClient, encoder, fileDescriptorId, debugUri, `print('Debug is active')`);
 			}
 		});
+		//}
 		let exitCode: number | undefined;
 		const exitHandler = (rval: number): void => {
 			exitCode = rval;
