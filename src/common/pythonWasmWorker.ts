@@ -39,7 +39,7 @@ export abstract class WasmRunner {
 		});
 
 		connection.onRequest('runRepl', (params) => {
-			return this.runRepl(this.createClientConnection(params.syncPort));
+			return this.runRepl(this.createClientConnection(params.syncPort), URI.from(params.uri));
 		});
 	}
 
@@ -57,8 +57,8 @@ export abstract class WasmRunner {
 		return this.run(clientConnection, file, debug);
 	}
 
-	protected async runRepl(clientConnection: ApiClientConnection): Promise<number> {
-		return this.run(clientConnection);
+	protected async runRepl(clientConnection: ApiClientConnection, debug: URI): Promise<number> {
+		return this.run(clientConnection, undefined, debug);
 	}
 
 	private async run(clientConnection: ApiClientConnection, file?: URI, debug?: URI): Promise<number> {

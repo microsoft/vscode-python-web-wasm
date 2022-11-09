@@ -32,6 +32,7 @@ export type MessageRequests = {
 	method: 'runRepl',
 	params: {
 		syncPort: any;
+		uri: DTOs.UriComponents;
 	},
 	result: number;
 };

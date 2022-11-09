@@ -3,7 +3,7 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { Extension, extensions, Uri, workspace } from 'vscode';
+import { Extension, extensions, Uri } from 'vscode';
 
 export interface RemoteHubApi {
 	getProviderUri(uri: Uri): Uri;

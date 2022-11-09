@@ -3,10 +3,10 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { ExtensionContext, Terminal, Uri, window } from 'vscode';
+import { ExtensionContext, Terminal } from 'vscode';
 
 import { ApiServiceConnection, BaseMessageConnection, ServicePseudoTerminal } from '@vscode/sync-api-service';
-import { ServiceConnection, Requests, ApiService, RAL as SyncRAL} from '@vscode/sync-api-service';
+import { ApiService } from '@vscode/sync-api-service';
 
 import PythonInstallation from './pythonInstallation';
 import { MessageRequests } from './messages';
@@ -139,7 +139,7 @@ export abstract class BaseLauncher {
 
 		apiService.registerCharacterDeviceDriver(pty, true);
 		let debugCharacterDeviceDriver: DebugCharacterDeviceDriver | undefined;
-		if (mode === 'debug') {
+		if (mode === 'debug' || mode === 'repl') {
 			debugCharacterDeviceDriver = new DebugCharacterDeviceDriver();
 			apiService.registerCharacterDeviceDriver(debugCharacterDeviceDriver, false);
 		}
@@ -148,8 +148,8 @@ export abstract class BaseLauncher {
 		const runRequest: Promise<number> = mode === 'run'
 			? messageConnection.sendRequest('executeFile', { syncPort: port, file: program! }, [port])
 			: mode === 'debug'
-				? messageConnection.sendRequest('debugFile', { syncPort: port, file: program!, uri: debugCharacterDeviceDriver!.uri}, [port])
-				: messageConnection.sendRequest('runRepl', { syncPort: port }, [port]);
+				? messageConnection.sendRequest('debugFile', { syncPort: port, file: program!, uri: debugCharacterDeviceDriver!.uri }, [port])
+				: messageConnection.sendRequest('runRepl', { syncPort: port , uri: debugCharacterDeviceDriver!.uri }, [port]);
 
 		runRequest.
 			then((rval) => { this.exitResolveCallback(rval); }).

@@ -23,7 +23,7 @@ export class DesktopLauncher extends BaseLauncher {
 	}
 
 	protected async createMessageConnection(context: ExtensionContext): Promise<MessageConnection<MessageRequests, undefined>> {
-		const filename = Uri.joinPath(context.extensionUri, './dist/desktop/pythonWasmWorker.js').fsPath;
+		const filename = Uri.joinPath(context.extensionUri, './out/desktop/pythonWasmWorker.js').fsPath;
 		this.worker = new Worker(filename);
 		const channel = new MessageChannel();
 		const ready = new Promise<void>((resolve, reject) => {

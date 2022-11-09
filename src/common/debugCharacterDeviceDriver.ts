@@ -7,12 +7,15 @@
 import * as uuid from 'uuid';
 
 import { Uri } from 'vscode';
-import { CharacterDeviceDriver, FileDescriptorDescription } from '@vscode/sync-api-service';
+import { CharacterDeviceDriver, FileDescriptorDescription, RAL as SyncRal } from '@vscode/sync-api-service';
 
 export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
-	public readonly uri: Uri;
 
+	public readonly uri: Uri;
 	public readonly fileDescriptor: FileDescriptorDescription;
+
+	private textEncoder: SyncRal.TextEncoder;
+	private textDecoder: SyncRal.TextDecoder;
 
 	constructor() {
 		this.uri = Uri.from({ scheme: 'debug', authority: uuid.v4()});
@@ -21,12 +24,15 @@ export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
 			uri: this.uri,
 			path: ''
 		};
+		this.textEncoder = SyncRal().TextEncoder.create();
+		this.textDecoder = SyncRal().TextDecoder.create();
 	}
 
 	write(bytes: Uint8Array): Promise<number> {
-		throw new Error('Method not implemented.');
+		console.log(this.textDecoder.decode(bytes));
+		return Promise.resolve(bytes.byteLength);
 	}
 	read(maxBytesToRead: number): Promise<Uint8Array> {
-		throw new Error('Method not implemented.');
+		return Promise.resolve(this.textEncoder.encode('Hello World\n'));
 	}
 }
