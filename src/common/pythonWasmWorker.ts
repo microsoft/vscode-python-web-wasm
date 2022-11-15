@@ -62,7 +62,6 @@ export abstract class WasmRunner {
 	}
 
 	private async run(clientConnection: ApiClientConnection, file?: URI, debug?: URI): Promise<number> {
-		debugger;
 		const apiClient = new ApiClient(clientConnection);
 		const stdio = (await apiClient.serviceReady()).stdio;
 		const path = this.path;

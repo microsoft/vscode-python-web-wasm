@@ -14,8 +14,11 @@ export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
 	public readonly uri: Uri;
 	public readonly fileDescriptor: FileDescriptorDescription;
 
-	private textEncoder: SyncRal.TextEncoder;
-	private textDecoder: SyncRal.TextDecoder;
+	private encoder: SyncRal.TextEncoder;
+	private decoder: SyncRal.TextDecoder;
+
+	private cmdIndex: number;
+	private readonly commands: string[];
 
 	constructor() {
 		this.uri = Uri.from({ scheme: 'debug', authority: uuid.v4()});
@@ -24,15 +27,22 @@ export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
 			uri: this.uri,
 			path: ''
 		};
-		this.textEncoder = SyncRal().TextEncoder.create();
-		this.textDecoder = SyncRal().TextDecoder.create();
+		this.encoder = SyncRal().TextEncoder.create();
+		this.decoder = SyncRal().TextDecoder.create();
+		this.commands = [
+			'b app.py:3\n',
+			'c\n',
+			'w\n',
+			'c\n'
+		];
+		this.cmdIndex = 0;
 	}
 
 	write(bytes: Uint8Array): Promise<number> {
-		console.log(this.textDecoder.decode(bytes));
+		console.log(this.decoder.decode(bytes));
 		return Promise.resolve(bytes.byteLength);
 	}
 	read(maxBytesToRead: number): Promise<Uint8Array> {
-		return Promise.resolve(this.textEncoder.encode('Hello World\n'));
+		return Promise.resolve(this.encoder.encode(this.commands[this.cmdIndex++]));
 	}
 }
