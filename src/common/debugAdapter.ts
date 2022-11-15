@@ -12,6 +12,7 @@ import { Event, Response } from './debugMessages';
 import { Launcher } from './launcher';
 import { ServicePseudoTerminal } from '@vscode/sync-api-service';
 import { Terminals } from './terminals';
+import { DebugCharacterDeviceDriver } from './debugCharacterDeviceDriver';
 
 export class DebugAdapter implements vscode.DebugAdapter {
 
@@ -145,7 +146,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			this.launcher = undefined;
 			this.sendTerminated();
 		}).catch(console.error);
-		await this.launcher.debug(this.context, program.replace(/\\/g, '/'), pty);
+		await this.launcher.debug(this.context, program.replace(/\\/g, '/'), pty, new DebugCharacterDeviceDriver());
 	}
 
 	dispose() {

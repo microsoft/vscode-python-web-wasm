@@ -42,7 +42,7 @@ export interface Launcher {
 	 * @param pty A pseudo terminal to use for input / output.
 	 * @returns A promise that completes when the WASM is executing.
 	 */
-	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal): Promise<void>;
+	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal, debugPorts: DebugCharacterDeviceDriver): Promise<void>;
 
 	/**
 	 * Starts a REPL session.
@@ -52,13 +52,6 @@ export interface Launcher {
 	 * @returns A promise that completes when the WASM is executing.
 	 */
 	startRepl(context: ExtensionContext, pty: ServicePseudoTerminal): Promise<void>;
-
-	/**
-	 *
-	 * @param context The VS Code extension context.
-	 * @param state The state to use.
-	 */
-	runFromState(context: ExtensionContext, state: LauncherState): Promise<void>
 
 	/**
 	 * A promise that resolves then the WASM finished running.
@@ -95,30 +88,18 @@ export abstract class BaseLauncher {
 		return this.doRun('run', context, pty, program);
 	}
 
-	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal): Promise<void> {
-		return this.doRun('debug', context, pty, program);
+	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal, debugPorts: DebugCharacterDeviceDriver): Promise<void> {
+		return this.doRun('debug', context, pty, program, debugPorts);
 	}
 
 	startRepl(context: ExtensionContext, pty: ServicePseudoTerminal): Promise<void> {
 		return this.doRun('repl', context, pty);
 	}
 
-	runFromState(context: ExtensionContext, state: NonNullable<BaseLauncher['state']>): Promise<void> {
-		switch (state.mode) {
-			case 'run':
-				return this.doRun('run', context, state.pty, state.program!);
-			case 'debug':
-				return this.doRun('debug', context, state.pty, state.program!);
-			case 'repl':
-				return this.doRun('repl', context, state.pty);
-
-		}
-	}
-
 	private doRun(mode: 'run', context: ExtensionContext, pty: ServicePseudoTerminal, program: string): Promise<void>;
-	private doRun(mode: 'debug', context: ExtensionContext, pty: ServicePseudoTerminal, program: string): Promise<void>;
+	private doRun(mode: 'debug', context: ExtensionContext, pty: ServicePseudoTerminal, program: string, debugPorts: DebugCharacterDeviceDriver): Promise<void>;
 	private doRun(mode: 'repl', context: ExtensionContext, pty: ServicePseudoTerminal): Promise<void>;
-	private async doRun(mode: 'run' | 'debug' | 'repl', context: ExtensionContext, pty: ServicePseudoTerminal,  program?: string): Promise<void> {
+	private async doRun(mode: 'run' | 'debug' | 'repl', context: ExtensionContext, pty: ServicePseudoTerminal,  program?: string, debugPorts?: DebugCharacterDeviceDriver): Promise<void> {
 		this.state = { mode, pty, program };
 		const [{ repository, root }, sharedWasmBytes, messageConnection] = await Promise.all([PythonInstallation.getConfig(), PythonInstallation.sharedWasmBytes(), this.createMessageConnection(context)]);
 
@@ -138,18 +119,16 @@ export abstract class BaseLauncher {
 		});
 
 		apiService.registerCharacterDeviceDriver(pty, true);
-		let debugCharacterDeviceDriver: DebugCharacterDeviceDriver | undefined;
-		if (mode === 'debug' || mode === 'repl') {
-			debugCharacterDeviceDriver = new DebugCharacterDeviceDriver();
-			apiService.registerCharacterDeviceDriver(debugCharacterDeviceDriver, false);
+		if (mode === 'debug') {
+			apiService.registerCharacterDeviceDriver(debugPorts!, false);
 		}
 		apiService.signalReady();
 
 		const runRequest: Promise<number> = mode === 'run'
 			? messageConnection.sendRequest('executeFile', { syncPort: port, file: program! }, [port])
 			: mode === 'debug'
-				? messageConnection.sendRequest('debugFile', { syncPort: port, file: program!, uri: debugCharacterDeviceDriver!.uri }, [port])
-				: messageConnection.sendRequest('runRepl', { syncPort: port , uri: debugCharacterDeviceDriver!.uri }, [port]);
+				? messageConnection.sendRequest('debugFile', { syncPort: port, file: program!, uri: debugPorts!.uri }, [port])
+				: messageConnection.sendRequest('runRepl', { syncPort: port }, [port]);
 
 		runRequest.
 			then((rval) => { this.exitResolveCallback(rval); }).

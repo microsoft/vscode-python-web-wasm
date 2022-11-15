@@ -31,8 +31,7 @@ export type MessageRequests = {
 } | {
 	method: 'runRepl',
 	params: {
-		syncPort: any;
-		uri: DTOs.UriComponents;
+		syncPort: any
 	},
 	result: number;
 };

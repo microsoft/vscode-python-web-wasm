@@ -14,6 +14,25 @@ import { MessageRequests } from './messages';
 
 type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequests, undefined, unknown>;
 
+namespace DebugMain {
+	const common = [
+		`import pdb`,
+		``,
+		`dbgin = open('/$debug/input', 'r', -1, 'utf-8')`,
+		`dbgout = open('/$debug/output', 'w', -1, 'utf-8')`,
+		``,
+		`debugger = pdb.Pdb(stdin=dbgin, stdout=dbgout)`,
+		`debugger.prompt = ''`
+	];
+	export function create(program: string): string {
+		const result = common.slice(0);
+		result.push(`target = pdb.ScriptTarget('${program}')`),
+		result.push(`target.check()`);
+		result.push(`debugger._run(target)`);
+		return result.join('\n');
+	}
+}
+
 export abstract class WasmRunner {
 
 	private pythonRepository!: URI;
@@ -39,7 +58,7 @@ export abstract class WasmRunner {
 		});
 
 		connection.onRequest('runRepl', (params) => {
-			return this.runRepl(this.createClientConnection(params.syncPort), URI.from(params.uri));
+			return this.runRepl(this.createClientConnection(params.syncPort));
 		});
 	}
 
@@ -57,11 +76,12 @@ export abstract class WasmRunner {
 		return this.run(clientConnection, file, debug);
 	}
 
-	protected async runRepl(clientConnection: ApiClientConnection, debug: URI): Promise<number> {
-		return this.run(clientConnection, undefined, debug);
+	protected async runRepl(clientConnection: ApiClientConnection): Promise<number> {
+		return this.run(clientConnection, undefined);
 	}
 
 	private async run(clientConnection: ApiClientConnection, file?: URI, debug?: URI): Promise<number> {
+		debugger;
 		const apiClient = new ApiClient(clientConnection);
 		const stdio = (await apiClient.serviceReady()).stdio;
 		const path = this.path;
@@ -87,16 +107,17 @@ export abstract class WasmRunner {
 			? this.pythonRepository
 			: this.pythonRepository.with({ path: path.join( this.pythonRepository.path, this.pythonRoot )});
 		devices.push({ kind: 'fileSystem', uri: pythonInstallation, mountPoint: path.sep});
-		// if (debug !== undefined) {
-		let debugUri: URI = debug ?? URI.from({ scheme: 'debug', authority: 'global'});
-		devices.push({
-			kind:'custom',
-			uri: debugUri,
-			factory: (apiClient, encoder, _decoder, fileDescriptorId) => {
-				return dbgfs.create(apiClient, encoder, fileDescriptorId, this.path, debugUri, `print('Debug is active')`);
-			}
-		});
-		//}
+		if (debug !== undefined && toRun !== undefined) {
+			const mainContent = DebugMain.create(toRun);
+			devices.push({
+				kind:'custom',
+				uri: debug,
+				factory: (apiClient, encoder, _decoder, fileDescriptorId) => {
+					return dbgfs.create(apiClient, encoder, fileDescriptorId, this.path, debug, mainContent);
+				}
+			});
+			toRun = '/$debug/main.py';
+		}
 		let exitCode: number | undefined;
 		const exitHandler = (rval: number): void => {
 			exitCode = rval;
