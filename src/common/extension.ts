@@ -105,14 +105,13 @@ export function activate(context: ExtensionContext) {
 			if (targetResource) {
 				await preloadPromise;
 				const pty = Terminals.getExecutionTerminal(targetResource, true);
-				const data: Terminals.Data = pty.data;
 				return debug.startDebugging(undefined, {
 					type: 'python-web-wasm',
 					name: 'Debug Python in WASM',
 					request: 'launch',
-					program: targetResource.toString(true),
 					stopOnEntry: true,
-					ptyInfo: { uuid: data.uuid }
+					program: targetResource.toString(true),
+					ptyInfo: { uuid: pty.id }
 				});
 			}
 			return false;
@@ -128,7 +127,7 @@ export function activate(context: ExtensionContext) {
 				Terminals.releaseReplTerminal(pty, true);
 			});
 			const launcher = RAL().launcher.create();
-			await launcher.run(context, undefined, pty);
+			await launcher.startRepl(context, pty);
 			launcher.onExit().catch(() => {
 				// todo@dirkb need to think how to handle this.
 			}).finally(() => {
@@ -145,11 +144,11 @@ export function activate(context: ExtensionContext) {
 		})
 	);
 
-	// const provider = new DebugConfigurationProvider(preloadPromise);
-	// context.subscriptions.push(debug.registerDebugConfigurationProvider('python-web-wasm', provider));
+	const provider = new DebugConfigurationProvider(preloadPromise);
+	context.subscriptions.push(debug.registerDebugConfigurationProvider('python-web-wasm', provider));
 
-	// const factory = new DebugAdapterDescriptorFactory(context, preloadPromise);
-	// context.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
+	const factory = new DebugAdapterDescriptorFactory(context, preloadPromise);
+	context.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
 }
 
 export function deactivate(): Promise<void> {

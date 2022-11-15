@@ -3,25 +3,55 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { ExtensionContext, Terminal, Uri, window } from 'vscode';
+import { ExtensionContext, Terminal } from 'vscode';
 
-import { BaseMessageConnection, ServicePseudoTerminal } from '@vscode/sync-api-service';
-import { ServiceConnection, Requests, ApiService, RAL as SyncRAL} from '@vscode/sync-api-service';
+import { ApiServiceConnection, BaseMessageConnection, ServicePseudoTerminal } from '@vscode/sync-api-service';
+import { ApiService } from '@vscode/sync-api-service';
 
-import RAL from './ral';
 import PythonInstallation from './pythonInstallation';
 import { MessageRequests } from './messages';
+import { DebugCharacterDeviceDriver } from './debugCharacterDeviceDriver';
 
 type MessageConnection = BaseMessageConnection<MessageRequests, undefined, undefined, undefined, any>;
 
+type LauncherState = {
+	mode: 'run' | 'debug' | 'repl';
+	pty: ServicePseudoTerminal;
+	program?: string;
+};
+
 export interface Launcher {
+
+	getState(): LauncherState | undefined;
+
 	/**
 	 * Run the Python WASM.
 	 *
-	 * @param context The VS Code extension context
+	 * @param context The VS Code extension context.
+	 * @param program The program to run.
+	 * @param pty A pseudo terminal to use for input / output.
 	 * @returns A promise that completes when the WASM is executing.
 	 */
-	run(context: ExtensionContext, program?: string, pty?: ServicePseudoTerminal): Promise<void>;
+	run(context: ExtensionContext, program: string, pty: ServicePseudoTerminal): Promise<void>;
+
+	/**
+	 * debug a program using the Python WASM.
+	 *
+	 * @param context The VS Code extension context.
+	 * @param program The program to run.
+	 * @param pty A pseudo terminal to use for input / output.
+	 * @returns A promise that completes when the WASM is executing.
+	 */
+	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal, debugPorts: DebugCharacterDeviceDriver): Promise<void>;
+
+	/**
+	 * Starts a REPL session.
+	 *
+	 * @param context  The VS Code extension context
+	 * @param pty A pseudo terminal to use for input / output
+	 * @returns A promise that completes when the WASM is executing.
+	 */
+	startRepl(context: ExtensionContext, pty: ServicePseudoTerminal): Promise<void>;
 
 	/**
 	 * A promise that resolves then the WASM finished running.
@@ -41,6 +71,8 @@ export abstract class BaseLauncher {
 
 	private terminal: Terminal | undefined;
 
+	private state: undefined | LauncherState;
+
 	public constructor() {
 		this.exitPromise = new Promise((resolve, reject) => {
 			this.exitResolveCallback = resolve;
@@ -48,13 +80,27 @@ export abstract class BaseLauncher {
 		});
 	}
 
-	/**
-	 * Run the Python WASM.
-	 *
-	 * @param context The VS Code extension context
-	 * @returns A promise that completes when the WASM is executing.
-	 */
-	public async run(context: ExtensionContext, program?: string, pty?: ServicePseudoTerminal): Promise<void> {
+	getState(): LauncherState | undefined {
+		return this.state;
+	}
+
+	run(context: ExtensionContext, program: string, pty: ServicePseudoTerminal): Promise<void> {
+		return this.doRun('run', context, pty, program);
+	}
+
+	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal, debugPorts: DebugCharacterDeviceDriver): Promise<void> {
+		return this.doRun('debug', context, pty, program, debugPorts);
+	}
+
+	startRepl(context: ExtensionContext, pty: ServicePseudoTerminal): Promise<void> {
+		return this.doRun('repl', context, pty);
+	}
+
+	private doRun(mode: 'run', context: ExtensionContext, pty: ServicePseudoTerminal, program: string): Promise<void>;
+	private doRun(mode: 'debug', context: ExtensionContext, pty: ServicePseudoTerminal, program: string, debugPorts: DebugCharacterDeviceDriver): Promise<void>;
+	private doRun(mode: 'repl', context: ExtensionContext, pty: ServicePseudoTerminal): Promise<void>;
+	private async doRun(mode: 'run' | 'debug' | 'repl', context: ExtensionContext, pty: ServicePseudoTerminal,  program?: string, debugPorts?: DebugCharacterDeviceDriver): Promise<void> {
+		this.state = { mode, pty, program };
 		const [{ repository, root }, sharedWasmBytes, messageConnection] = await Promise.all([PythonInstallation.getConfig(), PythonInstallation.sharedWasmBytes(), this.createMessageConnection(context)]);
 
 		messageConnection.listen();
@@ -70,23 +116,19 @@ export abstract class BaseLauncher {
 			exitHandler: (_rval) => {
 			},
 			echoName: false,
-			pty
 		});
-		const name = program !== undefined
-			? `Executing ${RAL().path.basename(program)}`
-			: 'Python REPL';
-		if (pty === undefined) {
-			this.terminal = window.createTerminal({ name: name, pty: apiService.getPty() });
-			// See https://github.com/microsoft/vscode/issues/160914
-			SyncRAL().timer.setTimeout(() => {
-				this.terminal!.show();
-			}, 50);
-		}
-		syncConnection.signalReady();
 
-		const runRequest: Promise<number> = program === undefined
-			? messageConnection.sendRequest('runRepl', { syncPort: port }, [port])
-			: messageConnection.sendRequest('executeFile', { syncPort: port, file: program }, [port]);
+		apiService.registerCharacterDeviceDriver(pty, true);
+		if (mode === 'debug') {
+			apiService.registerCharacterDeviceDriver(debugPorts!, false);
+		}
+		apiService.signalReady();
+
+		const runRequest: Promise<number> = mode === 'run'
+			? messageConnection.sendRequest('executeFile', { syncPort: port, file: program! }, [port])
+			: mode === 'debug'
+				? messageConnection.sendRequest('debugFile', { syncPort: port, file: program!, uri: debugPorts!.uri }, [port])
+				: messageConnection.sendRequest('runRepl', { syncPort: port }, [port]);
 
 		runRequest.
 			then((rval) => { this.exitResolveCallback(rval); }).
@@ -112,7 +154,7 @@ export abstract class BaseLauncher {
 
 	protected abstract createMessageConnection(context: ExtensionContext): Promise<MessageConnection>;
 
-	protected abstract createSyncConnection(messageConnection: MessageConnection): Promise<[ServiceConnection<Requests>, any]>;
+	protected abstract createSyncConnection(messageConnection: MessageConnection): Promise<[ApiServiceConnection, any]>;
 
 	protected abstract terminateConnection(): Promise<void>;
 }

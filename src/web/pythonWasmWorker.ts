@@ -5,7 +5,7 @@
 import path from 'path-browserify';
 
 import { ClientConnection, Requests, MessageConnection } from '@vscode/sync-api-common/browser';
-import { WASI } from '@vscode/wasm-wasi/browser';
+import { ApiClientConnection, WASI } from '@vscode/wasm-wasi/browser';
 
 import { WasmRunner } from '../common/pythonWasmWorker';
 import { MessageRequests } from '../common/messages';
@@ -15,8 +15,8 @@ class WebWasmRunner extends WasmRunner {
 		super(new MessageConnection<undefined, undefined, MessageRequests, undefined>(port), path);
 	}
 
-	protected createClientConnection(port: MessagePort): ClientConnection<Requests> {
-		return new ClientConnection<Requests>(port);
+	protected createClientConnection(port: MessagePort): ApiClientConnection {
+		return new ClientConnection<Requests, ApiClientConnection.ReadyParams>(port);
 	}
 
 	protected async doRun(binary: Uint8Array, wasi: WASI): Promise<void> {

@@ -3,6 +3,8 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
+import { DTOs } from '@vscode/sync-api-service';
+
 export type MessageRequests = {
 	method: 'initialize',
 	params: {
@@ -19,9 +21,17 @@ export type MessageRequests = {
 	}
 	result: number;
 } | {
-	method: 'runRepl',
+	method: 'debugFile',
 	params: {
 		syncPort: any;
+		file: string;
+		uri: DTOs.UriComponents;
+	}
+	result: number;
+} | {
+	method: 'runRepl',
+	params: {
+		syncPort: any
 	},
 	result: number;
 };
