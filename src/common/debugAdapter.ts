@@ -6,7 +6,7 @@
 
 import * as vscode from 'vscode';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { ServicePseudoTerminal, TerminalMode } from '@vscode/sync-api-service';
+import { ServicePseudoTerminal, RAL as SyncRal } from '@vscode/sync-api-service';
 import RAL from './ral';
 import { Response } from './debugMessages';
 import { Launcher } from './launcher';
@@ -26,9 +26,9 @@ const PdbTerminator = `(Pdb) `;
 export class DebugAdapter implements vscode.DebugAdapter {
 	private _launcher: Launcher | undefined;
 	private _debuggerDriver: DebugCharacterDeviceDriver | undefined;
+	private _terminal: ServicePseudoTerminal | undefined;
 	private _cwd: string | undefined;
 	private _sequence = 0;
-	private _disposables: vscode.Disposable[] = [];
 	private _outputChain: Promise<string> | undefined;
 	private _outputEmitter = new vscode.EventEmitter<string>();
 	private _stopped = true;
@@ -40,11 +40,10 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	private _boundBreakpoints: DebugProtocol.Breakpoint[] = [];
 	private _didSendMessageEmitter: vscode.EventEmitter<DebugProtocol.Response | DebugProtocol.Event> =
 		new vscode.EventEmitter<DebugProtocol.Response | DebugProtocol.Event>();
-
-	private static _terminal: vscode.Terminal;
-	private static _debugTerminal: ServicePseudoTerminal<any>;
-	private static _encoder: TextEncoder = new TextEncoder();
-
+	
+	private _encoder: SyncRal.TextEncoder = SyncRal().TextEncoder.create();
+	private _decoder: SyncRal.TextDecoder = SyncRal().TextDecoder.create();
+		
 	constructor(
 		readonly session: vscode.DebugSession,
 		readonly context: vscode.ExtensionContext,
@@ -54,10 +53,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._workspaceFolder = session.workspaceFolder ||
 			(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0] : undefined);
 		this._cwd = session.configuration.cwd || this._workspaceFolder;
-		if (!DebugAdapter._debugTerminal) {
-			DebugAdapter._debugTerminal = ServicePseudoTerminal.create(TerminalMode.idle);
-			DebugAdapter._terminal = vscode.window.createTerminal({ name: 'Python PDB', pty: DebugAdapter._debugTerminal });
-		}
 	}
 	get onDidSendMessage(): vscode.Event<DebugProtocol.ProtocolMessage> {
 		return this._didSendMessageEmitter.event;
@@ -68,12 +63,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		}
 	}
 	dispose() {
-		// Hack, readlinecallback needs to be reset. We likely have an outstanding promise
 		if (!this._disposed) {
 			this._disposed = true;
-			DebugAdapter._debugTerminal?.handleInput!('\r');
-			(DebugAdapter._debugTerminal as any).lines.clear();
-			DebugAdapter._debugTerminal?.setMode(TerminalMode.idle);
 		}
 	}
 
@@ -591,11 +582,10 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 	private async _handleUserInput() {
 		if (!this._disposed) {
-			DebugAdapter._debugTerminal.setMode(TerminalMode.inUse);
-			const output = await DebugAdapter._debugTerminal.readline();
+			const output = await this._debuggerDriver?.read(-1);
 			if (!this._stopped) {
 				// User typed something in, send it to the program
-				this._writetostdin(output);
+				this._writetostdin(this._decoder.decode(output));
 			}
 			// Recurse
 			void this._handleUserInput();
@@ -643,19 +633,19 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			return;
 		}
 		const args: DebugProtocol.LaunchRequestArguments & { program: string, ptyInfo: { uuid: string } } = message.arguments as any;
-		let pty: ServicePseudoTerminal | undefined;
 		const uuid = args.ptyInfo.uuid;
-		pty = Terminals.getTerminalInUse(uuid)!;
+		this._terminal = Terminals.getTerminalInUse(uuid)!;
 
 		this._launcher = RAL().launcher.create();
 		this._launcher.onExit().then((_rval) => {
 			this._launcher = undefined;
 			this._sendTerminated();
 		}).catch(console.error);
+		this._debuggerDriver = new DebugCharacterDeviceDriver();
 
 		// Wait for debuggee to emit first bit of output before continuing
 		await this._waitForPdbOutput('command', () => {
-			return this._launcher!.debug(this.context, args.program.replace(/\\/g, '/'), pty!, new DebugCharacterDeviceDriver());
+			return this._launcher!.debug(this.context, args.program.replace(/\\/g, '/'), this._terminal!, this._debuggerDriver!);
 		});
 
 		// Setup an alias for printing exc info
@@ -810,7 +800,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _writetostdin(text: string) {
-		this._debuggerDriver?.write(this._encoder.encode(text));
+		void this._debuggerDriver?.write(this._encoder.encode(text));
 	}
 
 	private async _executecommand(command: string): Promise<string> {
@@ -824,9 +814,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _sendToUserConsole(data: string) {
-		// Make sure terminal is shown before we write output
-		DebugAdapter._terminal.show();
-		DebugAdapter._debugTerminal.write(data);
+		this._terminal?.writeString(data);
 	}
 
 	private _sendToDebugConsole(data: string) {

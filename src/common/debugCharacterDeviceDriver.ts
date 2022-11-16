@@ -14,12 +14,6 @@ export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
 	public readonly uri: Uri;
 	public readonly fileDescriptor: FileDescriptorDescription;
 
-	private encoder: SyncRal.TextEncoder;
-	private decoder: SyncRal.TextDecoder;
-
-	private cmdIndex: number;
-	private readonly commands: string[];
-
 	constructor() {
 		this.uri = Uri.from({ scheme: 'debug', authority: uuid.v4()});
 		this.fileDescriptor = {
@@ -27,24 +21,16 @@ export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
 			uri: this.uri,
 			path: ''
 		};
-		this.encoder = SyncRal().TextEncoder.create();
-		this.decoder = SyncRal().TextDecoder.create();
-		this.commands = [
-			'b app.py:3\n',
-			'c\n',
-			'w\n',
-			'c\n'
-		];
-		this.cmdIndex = 0;
 	}
 
 	write(bytes: Uint8Array): Promise<number> {
 		// We need to slice the bytes since we can't pass a shared array
 		// buffer in the browser to the decode function
-		console.log(this.decoder.decode(bytes.slice()));
+		console.log('write to device driver');
 		return Promise.resolve(bytes.byteLength);
 	}
 	read(maxBytesToRead: number): Promise<Uint8Array> {
-		return Promise.resolve(this.encoder.encode(this.commands[this.cmdIndex++]));
+		console.log('read from the device driver');
+		return Promise.resolve(new Uint8Array());
 	}
 }

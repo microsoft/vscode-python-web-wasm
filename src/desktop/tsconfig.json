@@ -12,7 +12,7 @@
 	},
 	"include": [
 		"."
-	],
+, "../common/debugConfigurationProvider.ts"	],
 	"references": [
 		{ "path": "../common/tsconfig.json" }
 	]
