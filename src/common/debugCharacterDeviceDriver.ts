@@ -39,7 +39,9 @@ export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
 	}
 
 	write(bytes: Uint8Array): Promise<number> {
-		console.log(this.decoder.decode(bytes));
+		// We need to slice the bytes since we can't pass a shared array
+		// buffer in the browser to the decode function
+		console.log(this.decoder.decode(bytes.slice()));
 		return Promise.resolve(bytes.byteLength);
 	}
 	read(maxBytesToRead: number): Promise<Uint8Array> {
