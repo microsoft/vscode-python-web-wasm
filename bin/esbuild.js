@@ -11,11 +11,12 @@ if (process.argv.includes('--watch')) {
 	watch = {
 		onRebuild(error, result) {
 			if (error) {
-				console.error('watch build failed:', error);
+				console.error(`Build failed with ${error}. Watching for file changes.`);
 			} else {
-				console.log('watch build succeeded');
+				console.log(`Build successful. Watching for file changes.`);
 			}
 		}
+		
 	};
 }
 
