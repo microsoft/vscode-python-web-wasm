@@ -4,6 +4,5 @@ steps:
     displayName: "Install dependencies"
 
   - script: |
-      npm run lint
-      npm run compile
+      npm run all
     displayName: "Lint & Compile"

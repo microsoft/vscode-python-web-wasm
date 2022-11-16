@@ -62,7 +62,7 @@
 		"watch:esbuild": "node ./bin/esbuild.js --watch",
 		"lint": "node ./node_modules/eslint/bin/eslint.js --ext ts src",
 		"clean": "node ./node_modules/rimraf/bin.js out && node ./node_modules/rimraf/bin.js dist",
-		"all": "npm run clean && npm run compile:tsc && npm run lint",
+		"all": "npm run clean && npm run compile:tsc && pm run esbuild && npm run lint",
 		"serve": "serve --cors -l 5000 --ssl-cert $HOME/certs/localhost.pem --ssl-key $HOME/certs/localhost-key.pem -c ./configs/serve.json",
 		"serve-tunnel": "serve --cors -l 5000 -c ./configs/serve.json",
 		"tunnel": "lt -p 5000"
