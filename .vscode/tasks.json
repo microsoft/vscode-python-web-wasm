@@ -4,8 +4,19 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "watch",
+			"dependsOn": [
+				"npm: watch:tsc",
+				"npm: watch:esbuild"
+			],
+			"problemMatcher": [],
+			"runOptions": {
+				"runOn": "folderOpen"
+			}
+		},
+		{
 			"type": "npm",
-			"script": "watch",
+			"script": "watch:tsc",
 			"isBackground": true,
 			"group": {
 				"kind": "build",
@@ -18,13 +29,23 @@
 			"problemMatcher": [
 				"$tsc-watch"
 			],
-			"runOptions": {
-				"runOn": "folderOpen"
+		},
+		{
+			"type": "npm",
+			"script": "watch:esbuild",
+			"isBackground": true,
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "never",
+				"panel": "dedicated"
 			}
 		},
 		{
 			"type": "npm",
-			"script": "compile",
+			"script": "compile:tsc",
 			"isBackground": false,
 			"group": "build",
 			"presentation": {

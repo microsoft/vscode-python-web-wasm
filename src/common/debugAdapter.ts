@@ -7,8 +7,11 @@
 import * as vscode from 'vscode';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { ServicePseudoTerminal, TerminalMode } from '@vscode/sync-api-service';
-import { Spawnee, Spawner } from './spawner';
 import RAL from './ral';
+import { Response } from './debugMessages';
+import { Launcher } from './launcher';
+import { Terminals } from './terminals';
+import { DebugCharacterDeviceDriver } from './debugCharacterDeviceDriver';
 
 const StackFrameRegex = /^[>,\s]+(.+)\((\d+)\)(.*)\(\)/;
 const ScrapeDirOutputRegex = /\[(.*)\]/;
@@ -21,11 +24,10 @@ const SetupExceptionTraceback = `alias debug_pdb_print_exc_traceback !import tra
 const PdbTerminator = `(Pdb) `;
 
 export class DebugAdapter implements vscode.DebugAdapter {
-	private _launcher: () => void;
+	private _launcher: Launcher | undefined;
+	private _debuggerDriver: DebugCharacterDeviceDriver | undefined;
 	private _cwd: string | undefined;
 	private _sequence = 0;
-	private _spawner: Spawner;
-	private _debuggee: Spawnee | undefined;
 	private _disposables: vscode.Disposable[] = [];
 	private _outputChain: Promise<string> | undefined;
 	private _outputEmitter = new vscode.EventEmitter<string>();
@@ -41,13 +43,13 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 	private static _terminal: vscode.Terminal;
 	private static _debugTerminal: ServicePseudoTerminal<any>;
+	private static _encoder: TextEncoder = new TextEncoder();
 
 	constructor(
 		readonly session: vscode.DebugSession,
 		readonly context: vscode.ExtensionContext,
 		private readonly _ral: RAL
 	) {
-		this._spawner = _ral.spawner.create();
 		this._stopOnEntry = session.configuration.stopOnEntry;
 		this._workspaceFolder = session.workspaceFolder ||
 			(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0] : undefined);
@@ -56,7 +58,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			DebugAdapter._debugTerminal = ServicePseudoTerminal.create(TerminalMode.idle);
 			DebugAdapter._terminal = vscode.window.createTerminal({ name: 'Python PDB', pty: DebugAdapter._debugTerminal });
 		}
-		this._launcher = this._computeLauncher(session.configuration);
 	}
 	get onDidSendMessage(): vscode.Event<DebugProtocol.ProtocolMessage> {
 		return this._didSendMessageEmitter.event;
@@ -73,18 +74,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			DebugAdapter._debugTerminal?.handleInput!('\r');
 			(DebugAdapter._debugTerminal as any).lines.clear();
 			DebugAdapter._debugTerminal?.setMode(TerminalMode.idle);
-		}
-	}
-
-	private _computeLauncher(config: vscode.DebugConfiguration) {
-		if (!config.module) {
-			return () => {
-				void this._launchpdbforfile(config.file, this._cwd || config.cwd, config.args || []);
-			};
-		} else {
-			return () => {
-				void this._launchpdbformodule(config.module, this._cwd || config.cwd, config.args || []);
-			};
 		}
 	}
 
@@ -127,8 +116,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 			case 'continue':
 				this._handleContinue(message as DebugProtocol.ContinueRequest);
-				break;
-
+				
 			case 'terminate':
 				this._handleTerminate(message as DebugProtocol.TerminateRequest);
 				break;
@@ -154,7 +142,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 				break;
 
 			default:
-				console.log(`Unknown debugger command ${message.command}`);
+				this._sendResponse(new Response(message, `Unhandled request ${message.command}`));
 				break;
 		}
 	}
@@ -206,41 +194,11 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		}
 	}
 
-	private async _handleLaunch(message: DebugProtocol.LaunchRequest) {
-		if (!this._debuggee) {
-			// Startup pdb for the main file
-
-			// Wait for debuggee to emit first bit of output before continuing
-			await this._waitForPdbOutput('command', this._launcher);
-
-			// Setup an alias for printing exc info
-			await this._executecommand(SetupExceptionMessage);
-			await this._executecommand(SetupExceptionTraceback);
-
-			// Send a message to the debug console to indicate started debugging
-			this._sendToDebugConsole(`PDB debugger connected.\r\n`);
-
-			// Setup listening to user input
-			void this._handleUserInput();
-
-			// PDB should have stopped at the entry point and printed out the first line
-
-			// Send back the response
-			this._sendResponse<DebugProtocol.LaunchResponse>({
-				type: 'response',
-				request_seq: message.seq,
-				success: !this._debuggee!.killed,
-				command: message.command,
-				seq: 1
-			});
-		}
-	}
-
 	private _terminate() {
-		if (this._debuggee) {
+		if (this._launcher) {
 			this._writetostdin('exit\n');
-			this._debuggee.kill();
-			this._debuggee = undefined;
+			void this._launcher.terminate();
+			this._launcher = undefined;
 		}
 	}
 
@@ -540,25 +498,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		});
 	}
 
-	private async _launchpdb(args: string[], cwd: string) {
-		this._debuggee = await this._spawner.spawn(args, cwd);
-		this._disposables.push(this._debuggee!.stdout(this._handleStdout.bind(this)));
-		this._disposables.push(this._debuggee!.stderr(this._handleStderr.bind(this)));
-		this._disposables.push(this._debuggee!.exit((_code) => {
-			this._sendStoppedEvent('exit');
-		}));
-	}
-
-	private async _launchpdbforfile(file: string, cwd: string, args: string[]) {
-		this._sendToUserConsole(`python ${file} ${args.join(' ')}\r\n`);
-		return this._launchpdb( ['-m' ,'pdb', file, ...args], cwd);
-	}
-
-	private async _launchpdbformodule(module: string, cwd: string, args: string[]) {
-		this._sendToUserConsole(`python -m ${module} ${args.join(' ')}\r\n`);
-		return this._launchpdb( ['-m' ,'pdb', '-m', module, ...args], cwd);
-	}
-
 	private _isMyCode(file: string): boolean {
 		// Determine if this file is in the current workspace or not
 		if (this._workspaceFolder) {
@@ -699,6 +638,49 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		return this._executerun('c');
 	}
 
+	private async _handleLaunch(message: DebugProtocol.LaunchRequest): Promise<void> {
+		if (this._launcher !== undefined) {
+			return;
+		}
+		const args: DebugProtocol.LaunchRequestArguments & { program: string, ptyInfo: { uuid: string } } = message.arguments as any;
+		let pty: ServicePseudoTerminal | undefined;
+		const uuid = args.ptyInfo.uuid;
+		pty = Terminals.getTerminalInUse(uuid)!;
+
+		this._launcher = RAL().launcher.create();
+		this._launcher.onExit().then((_rval) => {
+			this._launcher = undefined;
+			this._sendTerminated();
+		}).catch(console.error);
+
+		// Wait for debuggee to emit first bit of output before continuing
+		await this._waitForPdbOutput('command', () => {
+			return this._launcher!.debug(this.context, args.program.replace(/\\/g, '/'), pty!, new DebugCharacterDeviceDriver());
+		});
+
+		// Setup an alias for printing exc info
+		await this._executecommand(SetupExceptionMessage);
+		await this._executecommand(SetupExceptionTraceback);
+
+		// Send a message to the debug console to indicate started debugging
+		this._sendToDebugConsole(`PDB debugger connected.\r\n`);
+
+		// Setup listening to user input
+		void this._handleUserInput();
+
+		// PDB should have stopped at the entry point and printed out the first line
+
+		// Send back the response
+		this._sendResponse<DebugProtocol.LaunchResponse>({
+			type: 'response',
+			request_seq: message.seq,
+			success: !!this._launcher,
+			command: message.command,
+			seq: 1
+		});
+
+	}
+
 	private async _stepInto() {
 		// see https://docs.python.org/3/library/pdb.html#pdbcommand-step
 		return this._executerun('s');
@@ -828,7 +810,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _writetostdin(text: string) {
-		this._debuggee?.stdin(text);
+		this._debuggerDriver?.write(this._encoder.encode(text));
 	}
 
 	private async _executecommand(command: string): Promise<string> {

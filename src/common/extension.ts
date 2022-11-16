@@ -48,6 +48,28 @@ export function activate(context: ExtensionContext) {
 			}
 			return false;
 		}),
+		commands.registerCommand('vscode-python-web-wasm.debug.debugEditorContents', async (resource: Uri) => {
+			if (!isCossOriginIsolated()) {
+				return false;
+			}
+			let targetResource = resource;
+			if (!targetResource && window.activeTextEditor) {
+				targetResource = window.activeTextEditor.document.uri;
+			}
+			if (targetResource) {
+				await preloadPromise;
+				const pty = Terminals.getExecutionTerminal(targetResource, true);
+				return debug.startDebugging(undefined, {
+					type: 'python-web-wasm',
+					name: 'Debug Python in WASM',
+					request: 'launch',
+					stopOnEntry: true,
+					program: targetResource.toString(true),
+					ptyInfo: { uuid: pty.id }
+				});
+			}
+			return false;
+		}),
 		commands.registerCommand('vscode-python-web-wasm.repl.start', async () => {
 			if (!isCossOriginIsolated()) {
 				return false;
@@ -59,7 +81,7 @@ export function activate(context: ExtensionContext) {
 				Terminals.releaseReplTerminal(pty, true);
 			});
 			const launcher = RAL().launcher.create();
-			await launcher.run(context, undefined, pty);
+			await launcher.startRepl(context, pty);
 			launcher.onExit().catch(() => {
 				// todo@dirkb need to think how to handle this.
 			}).finally(() => {
@@ -75,6 +97,13 @@ export function activate(context: ExtensionContext) {
 			});
 		})
 	);
+
+	const provider = new DebugConfigurationProvider(preloadPromise);
+	context.subscriptions.push(debug.registerDebugConfigurationProvider('python-web-wasm', provider));
+
+	const factory = new DebugAdapterDescriptorFactory(context, preloadPromise);
+	context.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
+
 	return preloadPromise;
 }
 

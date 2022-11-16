@@ -22,52 +22,78 @@
 	"activationEvents": [
 		"onLanguage:python",
 		"onCommand:vscode-python-web-wasm.debug.runEditorContents",
-		"onCommand:vscode-python-web-wasm.repl.start"
+		"onCommand:vscode-python-web-wasm.repl.start",
+		"onCommand:vscode-python-web-wasm.debug.debugEditorContents",
+		"onDebugResolve:python-web-wasm",
+		"onDebug"
 	],
 	"extensionDependencies": [
 		"ms-vscode.remote-repositories"
 	],
 	"dependencies": {
 		"@types/path-browserify": "^1.0.0",
-		"@vscode/debugprotocol": "1.57.0",
-		"@vscode/sync-api-service": "0.7.2",
-		"@vscode/wasm-wasi": "0.7.1",
+		"@vscode/debugprotocol": "1.58.0",
+		"@vscode/sync-api-service": "0.8.1",
+		"@vscode/wasm-wasi": "0.8.1",
 		"vscode-uri": "^3.0.6",
 		"path-browserify": "^1.0.1",
-		"uuid": "^9.0.0"
+		"uuid": "9.0.0"
 	},
 	"devDependencies": {
 		"@types/node": "^16.11.57",
 		"@types/vscode": "1.71.0",
 		"@types/uuid": "8.3.4",
-		"@typescript-eslint/eslint-plugin": "^5.36.2",
-		"@typescript-eslint/parser": "^5.36.2",
-		"esbuild": "^0.15.7",
-		"eslint": "^8.23.1",
-		"typescript": "^4.8.3",
-		"serve": "^14.0.1",
+		"@typescript-eslint/eslint-plugin": "^5.43.0",
+		"@typescript-eslint/parser": "^5.43.0",
+		"esbuild": "^0.15.14",
+		"eslint": "^8.27.0",
+		"typescript": "4.8.4",
+		"serve": "^14.1.1",
 		"localtunnel": "^2.0.2",
 		"shelljs": "^0.8.5",
-		"vsce": "^2.11.0"
+		"rimraf": "^3.0.2",
+		"vsce": "^2.14.0"
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run esbuild",
 		"symlink:vscode-wasm": "node ./bin/symlink",
-		"compile": "tsc -b ./tsconfig.json",
-		"watch": "tsc -b ./tsconfig.json -w",
-		"clean": "tsc -b tsconfig.json --clean",
+		"compile:tsc": "tsc -b ./tsconfig.json",
 		"esbuild": "node ./bin/esbuild.js",
+		"watch:tsc": "tsc -b ./tsconfig.json -w",
+		"watch:esbuild": "node ./bin/esbuild.js --watch",
+		"lint": "node ./node_modules/eslint/bin/eslint.js --ext ts src",
+		"clean": "node ./node_modules/rimraf/bin.js out && node ./node_modules/rimraf/bin.js dist",
+		"all": "npm run clean && npm run compile:tsc && npm run esbuild && npm run lint",
 		"serve": "serve --cors -l 5000 --ssl-cert $HOME/certs/localhost.pem --ssl-key $HOME/certs/localhost-key.pem -c ./configs/serve.json",
 		"serve-tunnel": "serve --cors -l 5000 -c ./configs/serve.json",
 		"tunnel": "lt -p 5000"
 	},
 	"contributes": {
+		"debuggers": [
+			{
+				"type": "python-web-wasm",
+				"languages": [
+					"python"
+				],
+				"label": "Debug Python in WASM",
+				"configurationAttributes": {
+					"launch": {
+						"properties": {}
+					}
+				}
+			}
+		],
 		"menus": {
 			"editor/title/run": [
 				{
 					"command": "vscode-python-web-wasm.debug.runEditorContents",
 					"when": "resourceLangId == python",
 					"group": "navigation@1"
+				},
+				{
+					"command": "vscode-python-web-wasm.debug.debugEditorContents",
+					"when": "resourceLangId == python",
+					"group": "navigation@2"
 				}
 			]
 		},
@@ -78,6 +104,13 @@
 				"category": "Python WASM",
 				"enablement": "!inDebugMode",
 				"icon": "$(play)"
+			},
+			{
+				"command": "vscode-python-web-wasm.debug.debugEditorContents",
+				"title": "Debug Python File in WASM",
+				"category": "Python WASM",
+				"enablement": "!inDebugMode",
+				"icon": "$(debug-alt)"
 			},
 			{
 				"command": "vscode-python-web-wasm.repl.start",

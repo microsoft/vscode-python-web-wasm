@@ -6,12 +6,32 @@
 // We can't use Uri from vscode since vscode is not available in a web worker.
 import { URI } from 'vscode-uri';
 
-import { ClientConnection, ApiClient, Requests, BaseMessageConnection } from '@vscode/sync-api-client';
-import { WASI, Options } from '@vscode/wasm-wasi';
+import { ApiClient, BaseMessageConnection, ApiClientConnection } from '@vscode/sync-api-client';
+import { WASI, DeviceDescription } from '@vscode/wasm-wasi';
 
+import * as dbgfs from './debugFileSystem';
 import { MessageRequests } from './messages';
 
 type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequests, undefined, unknown>;
+
+namespace DebugMain {
+	const common = [
+		`import pdb`,
+		``,
+		`dbgin = open('/$debug/input', 'r', -1, 'utf-8')`,
+		`dbgout = open('/$debug/output', 'w', -1, 'utf-8')`,
+		``,
+		`debugger = pdb.Pdb(stdin=dbgin, stdout=dbgout)`,
+		`debugger.prompt = ''`
+	];
+	export function create(program: string): string {
+		const result = common.slice(0);
+		result.push(`target = pdb.ScriptTarget('${program}')`),
+		result.push(`target.check()`);
+		result.push(`debugger._run(target)`);
+		return result.join('\n');
+	}
+}
 
 export abstract class WasmRunner {
 
@@ -33,6 +53,10 @@ export abstract class WasmRunner {
 			return this.executePythonFile(this.createClientConnection(params.syncPort), URI.parse(params.file));
 		});
 
+		connection.onRequest('debugFile', (params) => {
+			return this.debugPythonFile(this.createClientConnection(params.syncPort), URI.parse(params.file), URI.from(params.uri));
+		});
+
 		connection.onRequest('runRepl', (params) => {
 			return this.runRepl(this.createClientConnection(params.syncPort));
 		});
@@ -42,27 +66,32 @@ export abstract class WasmRunner {
 		this.connection.listen();
 	}
 
-	protected abstract createClientConnection(port: any): ClientConnection<Requests>;
+	protected abstract createClientConnection(port: any): ApiClientConnection;
 
-	protected async executePythonFile(clientConnection: ClientConnection<Requests>, file: URI): Promise<number> {
+	protected async executePythonFile(clientConnection: ApiClientConnection, file: URI): Promise<number> {
 		return this.run(clientConnection, file);
 	}
 
-	protected async runRepl(clientConnection: ClientConnection<Requests>): Promise<number> {
-		return this.run(clientConnection);
+	protected async debugPythonFile(clientConnection: ApiClientConnection, file: URI, debug: URI): Promise<number> {
+		return this.run(clientConnection, file, debug);
 	}
 
-	private async run(clientConnection: ClientConnection<Requests>, file?: URI): Promise<number> {
-		await clientConnection.serviceReady();
+	protected async runRepl(clientConnection: ApiClientConnection): Promise<number> {
+		return this.run(clientConnection, undefined);
+	}
+
+	private async run(clientConnection: ApiClientConnection, file?: URI, debug?: URI): Promise<number> {
 		const apiClient = new ApiClient(clientConnection);
+		const stdio = (await apiClient.serviceReady()).stdio;
 		const path = this.path;
-		const name = 'Python WASM';
+		// The is the name of the wasm to be execute (e.g. comparable to users typing it in bash)
+		const name = 'python';
 		const workspaceFolders = apiClient.vscode.workspace.workspaceFolders;
-		const mapDir: Options['mapDir'] = [];
+		const devices: DeviceDescription[] = [];
 		let toRun: string | undefined;
 		if (workspaceFolders.length === 1) {
 			const folderUri = workspaceFolders[0].uri;
-			mapDir.push({ name: path.join(path.sep, 'workspace'), uri: folderUri });
+			devices.push({ kind: 'fileSystem',  uri: workspaceFolders[0].uri, mountPoint: path.join(path.sep, 'workspace') });
 			if (file !== undefined) {
 				if (file.toString().startsWith(folderUri.toString())) {
 					toRun = path.join(path.sep, 'workspace', file.toString().substring(folderUri.toString().length));
@@ -70,20 +99,30 @@ export abstract class WasmRunner {
 			}
 		} else {
 			for (const folder of workspaceFolders) {
-				mapDir.push({ name: path.join(path.sep, 'workspaces', folder.name), uri: folder.uri });
+				devices.push({ kind: 'fileSystem',  uri: folder.uri, mountPoint: path.join(path.sep, 'workspaces', folder.name) });
 			}
 		}
 		const pythonInstallation = this.pythonRoot === undefined
 			? this.pythonRepository
 			: this.pythonRepository.with({ path: path.join( this.pythonRepository.path, this.pythonRoot )});
-		mapDir.push({ name: path.sep, uri: pythonInstallation });
+		devices.push({ kind: 'fileSystem', uri: pythonInstallation, mountPoint: path.sep});
+		if (debug !== undefined && toRun !== undefined) {
+			const mainContent = DebugMain.create(toRun);
+			devices.push({
+				kind:'custom',
+				uri: debug,
+				factory: (apiClient, encoder, _decoder, fileDescriptorId) => {
+					return dbgfs.create(apiClient, encoder, fileDescriptorId, this.path, debug, mainContent);
+				}
+			});
+			toRun = '/$debug/main.py';
+		}
 		let exitCode: number | undefined;
 		const exitHandler = (rval: number): void => {
 			exitCode = rval;
 		};
-		const wasi = WASI.create(name, apiClient, exitHandler, {
-			mapDir,
-			argv: toRun !== undefined ? ['python', '-B', '-X', 'utf8', toRun] : ['python', '-B', '-X', 'utf8'],
+		const wasi = WASI.create(name, apiClient, exitHandler, devices, stdio, {
+			args: toRun !== undefined ? ['-B', '-X', 'utf8', toRun] : ['-B', '-X', 'utf8'],
 			env: {
 				PYTHONPATH: '/workspace:/site-packages'
 			}
