@@ -11,9 +11,6 @@ interface RAL {
 	readonly launcher: {
 		create(): Launcher;
 	}
-	readonly spawner: {
-		create(): Spawner;
-	}
 	readonly path: IPath;
 	readonly isCrossOriginIsolated: boolean;
 	readonly timer: {
