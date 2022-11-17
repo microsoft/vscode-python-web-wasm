@@ -30,7 +30,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	private _cwd: string | undefined;
 	private _sequence = 0;
 	private _outputChain: Promise<string> | undefined;
-	private _outputEmitter = new vscode.EventEmitter<string>();
 	private _stopped = true;
 	private _stopOnEntry = false;
 	private _currentFrame = 1;
@@ -136,15 +135,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 				this._sendResponse(new Response(message, `Unhandled request ${message.command}`));
 				break;
 		}
-	}
-
-	private _handleStdout(data: string) {
-		this._outputEmitter.fire(data);
-	}
-
-	private _handleStderr(data: string) {
-		// Both handled the same for now.
-		return this._handleStdout(data);
 	}
 
 	private _sendResponse<T extends DebugProtocol.Response>(response: T) {
@@ -254,13 +244,13 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._outputChain = current.then(() => {
 			return new Promise<string>((resolve, reject) => {
 				let output = '';
-				const disposable = this._outputEmitter.event((str) => {
+				const disposable = this._debuggerDriver?.output((str) => {
 					// In command mode, remove carriage returns. Makes handling simpler
 					str = mode === 'command' ? str.replace(/\r/g, '') : str;
 
 					// We are finished when the output ends with `(Pdb) `
 					if (str.endsWith(PdbTerminator)) {
-						disposable.dispose();
+						disposable?.dispose();
 						output = `${output}${str.slice(0, str.length - PdbTerminator.length)}`;
 						this._stopped = true;
 						resolve(output);
@@ -279,6 +269,16 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		return this._outputChain;
 	}
 
+	private _translatePath(path: string) {
+		const normalized = path.replace(/\\/g, '/');
+		if (normalized.startsWith('/workspace') && this._workspaceFolder) {
+			const root = this._workspaceFolder.uri.fsPath.toLowerCase();
+			// Wasm path, translate to workspace path
+			return `${root}/${normalized.slice('/workspace'.length)}`;
+		}
+		return normalized;
+	}
+
 	private _parseStackFrames(frames: string): DebugProtocol.StackFrame[] {
 		let result: DebugProtocol.StackFrame[] = [];
 
@@ -291,12 +291,13 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			if (frameParts) {
 				const sepIndex = frameParts[1].replace(/\\/g, '/').lastIndexOf('/');
 				const name = sepIndex >= 0 ? frameParts[1].slice(sepIndex) : frameParts[1];
+				const translatedPath = this._translatePath(frameParts[1]);
 				// Insert at the front so last frame is on front of list
 				result.splice(0, 0, {
 					id: result.length+1,
 					source: {
 						name,
-						path: frameParts[1],
+						path: translatedPath,
 						sourceReference: 0 // Don't retrieve source from pdb
 					},
 					name: frameParts[3],
@@ -491,7 +492,9 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 	private _isMyCode(file: string): boolean {
 		// Determine if this file is in the current workspace or not
-		if (this._workspaceFolder) {
+		if (file.startsWith('/workspace')) {
+			return true;
+		}else if (this._workspaceFolder) {
 			const root = this._workspaceFolder.uri.fsPath.toLowerCase();
 			return file.toLowerCase().startsWith(root);
 		} else {
@@ -580,18 +583,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		}
 	}
 
-	private async _handleUserInput() {
-		if (!this._disposed) {
-			const output = await this._debuggerDriver?.read(-1);
-			if (!this._stopped) {
-				// User typed something in, send it to the program
-				this._writetostdin(this._decoder.decode(output));
-			}
-			// Recurse
-			void this._handleUserInput();
-		}
-	}
-
 	private _executerun(runcommand: string) {
 		// If at an unhandled exception, just terminate (user hit go after the exception happened)
 		if (this._uncaughtException) {
@@ -640,12 +631,16 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._launcher.onExit().then((_rval) => {
 			this._launcher = undefined;
 			this._sendTerminated();
-		}).catch(console.error);
+		}).catch(e => {
+			console.error(e);
+			this._launcher = undefined;
+			this._sendTerminated();
+		});
 		this._debuggerDriver = new DebugCharacterDeviceDriver();
 
 		// Wait for debuggee to emit first bit of output before continuing
 		await this._waitForPdbOutput('command', () => {
-			return this._launcher!.debug(this.context, args.program.replace(/\\/g, '/'), this._terminal!, this._debuggerDriver!);
+			return this._launcher!.debug(this.context, args.program.replace(/\\/g, '/'), this._terminal!, this._debuggerDriver!, PdbTerminator);
 		});
 
 		// Setup an alias for printing exc info
@@ -654,9 +649,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 		// Send a message to the debug console to indicate started debugging
 		this._sendToDebugConsole(`PDB debugger connected.\r\n`);
-
-		// Setup listening to user input
-		void this._handleUserInput();
 
 		// PDB should have stopped at the entry point and printed out the first line
 
@@ -800,7 +792,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _writetostdin(text: string) {
-		void this._debuggerDriver?.write(this._encoder.encode(text));
+		void this._debuggerDriver?.input(text);
 	}
 
 	private async _executecommand(command: string): Promise<string> {

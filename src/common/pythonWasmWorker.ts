@@ -11,6 +11,7 @@ import { WASI, DeviceDescription } from '@vscode/wasm-wasi';
 
 import * as dbgfs from './debugFileSystem';
 import { MessageRequests } from './messages';
+import { debug } from 'vscode';
 
 type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequests, undefined, unknown>;
 
@@ -21,11 +22,11 @@ namespace DebugMain {
 		`dbgin = open('/$debug/input', 'r', -1, 'utf-8')`,
 		`dbgout = open('/$debug/output', 'w', -1, 'utf-8')`,
 		``,
-		`debugger = pdb.Pdb(stdin=dbgin, stdout=dbgout)`,
-		`debugger.prompt = ''`
+		`debugger = pdb.Pdb(stdin=dbgin, stdout=dbgout)`
 	];
-	export function create(program: string): string {
+	export function create(program: string, terminator: string): string {
 		const result = common.slice(0);
+		result.push(`debugger.prompt = '${terminator}'`);
 		result.push(`target = pdb.ScriptTarget('${program}')`),
 		result.push(`target.check()`);
 		result.push(`debugger._run(target)`);
@@ -54,7 +55,7 @@ export abstract class WasmRunner {
 		});
 
 		connection.onRequest('debugFile', (params) => {
-			return this.debugPythonFile(this.createClientConnection(params.syncPort), URI.parse(params.file), URI.from(params.uri));
+			return this.debugPythonFile(this.createClientConnection(params.syncPort), URI.parse(params.file), URI.from(params.uri), params.terminator);
 		});
 
 		connection.onRequest('runRepl', (params) => {
@@ -72,15 +73,15 @@ export abstract class WasmRunner {
 		return this.run(clientConnection, file);
 	}
 
-	protected async debugPythonFile(clientConnection: ApiClientConnection, file: URI, debug: URI): Promise<number> {
-		return this.run(clientConnection, file, debug);
+	protected async debugPythonFile(clientConnection: ApiClientConnection, file: URI, debug: URI, terminator: string): Promise<number> {
+		return this.run(clientConnection, file, debug, terminator);
 	}
 
 	protected async runRepl(clientConnection: ApiClientConnection): Promise<number> {
 		return this.run(clientConnection, undefined);
 	}
 
-	private async run(clientConnection: ApiClientConnection, file?: URI, debug?: URI): Promise<number> {
+	private async run(clientConnection: ApiClientConnection, file?: URI, debug?: URI, terminator?: string): Promise<number> {
 		const apiClient = new ApiClient(clientConnection);
 		const stdio = (await apiClient.serviceReady()).stdio;
 		const path = this.path;
@@ -107,7 +108,7 @@ export abstract class WasmRunner {
 			: this.pythonRepository.with({ path: path.join( this.pythonRepository.path, this.pythonRoot )});
 		devices.push({ kind: 'fileSystem', uri: pythonInstallation, mountPoint: path.sep});
 		if (debug !== undefined && toRun !== undefined) {
-			const mainContent = DebugMain.create(toRun);
+			const mainContent = DebugMain.create(toRun, terminator || '');
 			devices.push({
 				kind:'custom',
 				uri: debug,

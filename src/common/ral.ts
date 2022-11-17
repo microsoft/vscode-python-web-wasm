@@ -5,8 +5,6 @@
 
 import type { IPath } from './path';
 import type { Launcher } from './launcher';
-import { Spawner } from './spawner';
-
 interface RAL {
 	readonly launcher: {
 		create(): Launcher;

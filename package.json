@@ -129,58 +129,6 @@
 					"description": "A URL for a GitHub that hosts the python.wasm file together with the default Python libraries."
 				}
 			}
-		},
-		"debuggers": [
-			{
-			  "label": "Python PDB",
-			  "languages": [
-				"python"
-			  ],
-			  "type": "python-pdb-node",
-			  "when": "!virtualWorkspace",
-			  "configurationAttributes": {
-				"launch": {
-				  "properties": {
-					"args": {
-					  "default": [],
-					  "description": "Command line arguments passed to the file.",
-					  "items": {
-						"type": "string"
-					  },
-					  "type": [
-						"array",
-						"string"
-					  ]
-					},
-					"cwd": {
-					  "default": "${workspaceFolder}",
-					  "description": "Absolute path to the working directory of the program being debugged. Default is the root directory of the file (leave empty).",
-					  "type": "string"
-					},
-					"file": {
-					  "default": "${file}",
-					  "description": "Absolute path to the python file.",
-					  "type": "string"
-					},
-					"module": {
-					  "description": "Name of module to debug. If this entry exists, file is ignored",
-					  "type": "string"
-					},
-					"stopOnEntry": {
-					  "description": "Whether or not to stop the debugger on the first line of the first file",
-					  "default": true,
-					  "type": "boolean"
-					},
-					"python": {
-					  "default": "${command:python.interpreterPath}",
-					  "description": "Absolute path to the Python interpreter executable; overrides workspace configuration if set.",
-					  "type": "string"
-					}
-				  }
-				}
-			  }
-			}
-		  ]
-	  
+		}
 	}
 }
