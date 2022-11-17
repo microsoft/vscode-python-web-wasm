@@ -3,6 +3,7 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
+import { TerminalMode } from '@vscode/sync-api-service';
 import {
 	CancellationToken, commands, debug, DebugAdapterDescriptor, DebugAdapterInlineImplementation, DebugConfiguration,
 	DebugSession, ExtensionContext, Uri, window, WorkspaceFolder, workspace
@@ -105,6 +106,7 @@ export function activate(context: ExtensionContext) {
 			if (targetResource) {
 				await preloadPromise;
 				const pty = Terminals.getExecutionTerminal(targetResource, true);
+				pty.setMode(TerminalMode.idle); // DebugAdapter will switch to in use
 				return debug.startDebugging(undefined, {
 					type: 'python-web-wasm',
 					name: 'Debug Python in WASM',

@@ -6,7 +6,7 @@
 
 import * as vscode from 'vscode';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { ServicePseudoTerminal, RAL as SyncRal } from '@vscode/sync-api-service';
+import { ServicePseudoTerminal, RAL as SyncRal, TerminalMode } from '@vscode/sync-api-service';
 import RAL from './ral';
 import { Response } from './debugMessages';
 import { Launcher } from './launcher';
@@ -62,8 +62,12 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		}
 	}
 	dispose() {
+		// Hack, readlinecallback needs to be reset. We likely have an outstanding promise
 		if (!this._disposed) {
 			this._disposed = true;
+			this._terminal?.handleInput!('\r');
+			(this._terminal as any).lines.clear();
+			this._terminal?.setMode(TerminalMode.idle);
 		}
 	}
 
@@ -106,6 +110,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 			case 'continue':
 				this._handleContinue(message as DebugProtocol.ContinueRequest);
+				break;
 				
 			case 'terminate':
 				this._handleTerminate(message as DebugProtocol.TerminateRequest);
@@ -178,13 +183,15 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	private _terminate() {
 		if (this._launcher) {
 			this._writetostdin('exit\n');
-			void this._launcher.terminate();
+			const launcher = this._launcher;
 			this._launcher = undefined;
+			void launcher.terminate();
 		}
 	}
 
 	private _handleDisconnect(message: DebugProtocol.DisconnectRequest) {
 		this._terminate();
+		this._sendToUserConsole(`Process exited.`);
 		this._sendResponse<DebugProtocol.DisconnectResponse>({
 			type: 'response',
 			request_seq: message.seq,
@@ -269,12 +276,22 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		return this._outputChain;
 	}
 
-	private _translatePath(path: string) {
-		const normalized = path.replace(/\\/g, '/');
-		if (normalized.startsWith('/workspace') && this._workspaceFolder) {
-			const root = this._workspaceFolder.uri.fsPath.toLowerCase();
+	private _translateToWorkspacePath(wasmPath: string) {
+		const normalized = wasmPath.replace(/\\/g, '/');
+		if (normalized.startsWith('/workspace/') && this._workspaceFolder) {
+			const root = this._workspaceFolder.uri.fsPath.replace(/\\/g, '/');
 			// Wasm path, translate to workspace path
-			return `${root}/${normalized.slice('/workspace'.length)}`;
+			return `${root}/${normalized.slice('/workspace/'.length)}`;
+		}
+		return normalized;
+	}
+
+	private _translateFromWorkspacePath(workspacePath: string) {
+		const normalized = workspacePath.replace(/\\/g, '/');
+		const root = this._workspaceFolder?.uri.fsPath.replace(/\\/g, '/');
+		if (root && normalized.startsWith(root)) {
+			// workspace path, translate to workspace path
+			return `/workspace${normalized.slice(root.length)}`;
 		}
 		return normalized;
 	}
@@ -291,7 +308,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			if (frameParts) {
 				const sepIndex = frameParts[1].replace(/\\/g, '/').lastIndexOf('/');
 				const name = sepIndex >= 0 ? frameParts[1].slice(sepIndex) : frameParts[1];
-				const translatedPath = this._translatePath(frameParts[1]);
+				const translatedPath = this._translateToWorkspacePath(frameParts[1]);
 				// Insert at the front so last frame is on front of list
 				result.splice(0, 0, {
 					id: result.length+1,
@@ -461,14 +478,15 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		// Use the 'b' command to create breakpoints
 		if (message.arguments.breakpoints) {
 			await Promise.all(message.arguments.breakpoints.map(async (b) => {
-				const result = await this._executecommand(`b ${message.arguments.source.path}:${b.line}`);
+				const wasmPath = this._translateFromWorkspacePath(message.arguments.source.path || '');
+				const result = await this._executecommand(`b ${wasmPath}:${b.line}`);
 				const parsed = BreakpointRegex.exec(result);
 				if (parsed) {
 					const breakpoint: DebugProtocol.Breakpoint = {
 						id: parseInt(parsed[1]),
 						line: parseInt(parsed[3]),
 						source: {
-							path: parsed[2]
+							path: this._translateToWorkspacePath(parsed[2])
 						},
 						verified: true
 					};
@@ -495,11 +513,11 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		if (file.startsWith('/workspace')) {
 			return true;
 		}else if (this._workspaceFolder) {
-			const root = this._workspaceFolder.uri.fsPath.toLowerCase();
+			const root = this._workspaceFolder.uri.fsPath.toLowerCase().replace(/\\/g, '/');
 			return file.toLowerCase().startsWith(root);
 		} else {
 			// Otherwise no workspace folder and just a loose file. Use the starting file
-			const root = this._cwd?.toLowerCase();
+			const root = this._cwd?.toLowerCase().replace(/\\/g, '/');
 			return root ? file.toLowerCase().startsWith(root) : false;
 		}
 	}
@@ -626,7 +644,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		const args: DebugProtocol.LaunchRequestArguments & { program: string, ptyInfo: { uuid: string } } = message.arguments as any;
 		const uuid = args.ptyInfo.uuid;
 		this._terminal = Terminals.getTerminalInUse(uuid)!;
-
 		this._launcher = RAL().launcher.create();
 		this._launcher.onExit().then((_rval) => {
 			this._launcher = undefined;
@@ -651,6 +668,9 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._sendToDebugConsole(`PDB debugger connected.\r\n`);
 
 		// PDB should have stopped at the entry point and printed out the first line
+
+		// Start listening for user input
+		this._terminal.setMode(TerminalMode.inUse);
 
 		// Send back the response
 		this._sendResponse<DebugProtocol.LaunchResponse>({
