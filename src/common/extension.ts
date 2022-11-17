@@ -46,9 +46,27 @@ export class DebugConfigurationProvider implements DebugConfigurationProvider {
 			}
 		}
 
+		// Stop on entry defaults to true. Assumption being users won't
+		// understand what's happening without it.
+		if (config.stopOnEntry === undefined) {
+			config.stopOnEntry = true;
+		}
+
 		if (!config.program) {
 			await window.showInformationMessage('Cannot find a Python file to debug');
 			return undefined;
+		}
+
+		// Program has to be a URI
+		const targetResource = config.program && config.program !== '${file}' ? Uri.file(config.program) : window.activeTextEditor?.document.uri;
+		if (targetResource) {
+			config.program = targetResource.toString();
+		}
+
+		if (!config.ptyInfo && targetResource) {
+			const pty = Terminals.getExecutionTerminal(targetResource, true);
+			pty.setMode(TerminalMode.idle); // DebugAdapter will switch to in use
+			config.ptyInfo = { uuid: pty.id };
 		}
 
 		return config;
