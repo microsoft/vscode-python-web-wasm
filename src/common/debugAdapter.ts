@@ -22,9 +22,14 @@ const PrintExceptionMessage = `debug_pdb_print_exc_message`;
 const SetupExceptionMessage = `alias debug_pdb_print_exc_message !import sys; print(sys.exc_info()[1], file=open('/$debug/output', 'w', -1, 'utf-8'))`;
 const PrintExceptionTraceback = `debug_pdb_print_exc_traceback`;
 const SetupExceptionTraceback = `alias debug_pdb_print_exc_traceback !import traceback; import sys; traceback.print_exc(file=open('/$debug/output', 'w', -1, 'utf-8'))`;
+const PrintExceptionVarMessage = `debug_pdb_print_exc_var_message`;
+const SetupExceptionVarMessage = `alias debug_pdb_print_exc_var_message !import sys; print(__exception__[1], file=open('/$debug/output', 'w', -1, 'utf-8'))`;
+const PrintExceptionVarTraceback = `debug_pdb_print_exc_var_traceback`;
+const SetupExceptionVarTraceback = `alias debug_pdb_print_exc_var_traceback !import traceback; import sys; traceback.print_exception(__exception__[1], file=open('/$debug/output', 'w', -1, 'utf-8'))`;
 const PdbTerminator = `(Pdb) `;
 const UncaughtExceptionOutput = 'Uncaught exception. Entering post mortem debugging';
 const ProgramFinishedOutput = 'The program finished and will be restarted';
+const SyntaxErrorOutput = /^SyntaxError:\s+/gm;
 
 export class DebugAdapter implements vscode.DebugAdapter {
 	private _launcher: Launcher | undefined;
@@ -255,7 +260,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		// We should be stopped now. Depends upon why
 		if (output.includes(ProgramFinishedOutput)) {
 			this._handleProgramFinished(output);
-		} else if (output.includes(UncaughtExceptionOutput)) {
+		} else if (output.includes(UncaughtExceptionOutput) || SyntaxErrorOutput.test(output)) {
 			await this._handleUncaughtException(output);
 		} else if (output.includes('--Return--')) {
 			await this._handleFunctionReturn(output);
@@ -655,7 +660,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			const output = await this._waitForPdbOutput('run', () => this._writetostdin(`${runcommand}\n`));
 
 			// Parse the output to decide what to do next
-			return this._parseStoppedOutput(output);
+			return this._parseStoppedOutput(output, runcommand);
 		}, 1);
 	}
 	private async _continue() {
@@ -690,6 +695,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		// Setup an alias for printing exc info
 		await this._executecommand(SetupExceptionMessage);
 		await this._executecommand(SetupExceptionTraceback);
+		await this._executecommand(SetupExceptionVarMessage);
+		await this._executecommand(SetupExceptionVarTraceback);
 
 		// Send a message to the debug console to indicate started debugging
 		this._sendToDebugConsole(`PDB debugger connected.\r\n`);
@@ -819,8 +826,17 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 	private async _handleExceptionInfo(message: DebugProtocol.ExceptionInfoRequest) {
 		// Get the current exception traceback
-		const msg = await this._executecommand(PrintExceptionMessage);
-		const traceback = await this._executecommand(PrintExceptionTraceback);
+		let msg = await this._executecommand(PrintExceptionMessage);
+		let traceback = await this._executecommand(PrintExceptionTraceback);
+
+		if (!msg || msg === 'None\n') {
+			// See if we have __exception__ in our locals
+			const dir = await this._executecommand('dir()');
+			if (dir && dir.includes('__exception__')) {
+				msg = await this._executecommand(PrintExceptionVarMessage);
+				traceback = await this._executecommand(PrintExceptionVarTraceback);
+			}
+		}
 
 		// Turn it into something VS code understands
 		this._sendResponse<DebugProtocol.ExceptionInfoResponse>({
