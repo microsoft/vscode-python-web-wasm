@@ -16,21 +16,41 @@ import { debug } from 'vscode';
 type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequests, undefined, unknown>;
 
 namespace DebugMain {
-	const common = [
-		`import pdb`,
-		``,
-		`dbgin = open('/$debug/input', 'r', -1, 'utf-8')`,
-		`dbgout = open('/$debug/output', 'w', -1, 'utf-8')`,
-		``,
-		`debugger = pdb.Pdb(stdin=dbgin, stdout=dbgout)`
-	];
+	// This is basically the same code in pdb.main, but using _run with a target instead
+	const common = ` 
+import pdb
+
+def opendbgout():
+	return open('/$debug/output', 'w', -1, 'utf-8')
+
+def opendbgin():
+	return open('/$debug/input', 'r', -1, 'utf-8')
+	
+def run(dbg, tgt):
+	try:
+		dbg._run(tgt)
+	except SystemExit:
+		import sys
+		with open('/$debug/output', 'w', -1, 'utf-8') as dbgout:
+			print(sys.exc_info()[1], file=dbgout)
+	except:
+		import traceback
+		import sys
+		with open('/$debug/output', 'w', -1, 'utf-8') as dbgout:
+			traceback.print_exc(file=dbgout)
+			print("Uncaught exception. Entering post mortem debugging", file=dbgout)
+			dbgout.write("$terminator")
+		t = sys.exc_info()[2]
+		dbg.interaction(None, t)
+
+
+debugger = pdb.Pdb(stdin=opendbgin(), stdout=opendbgout())
+debugger.prompt = '$terminator'
+target = pdb.ScriptTarget('$program')
+run(debugger, target)`;
+
 	export function create(program: string, terminator: string): string {
-		const result = common.slice(0);
-		result.push(`debugger.prompt = '${terminator}'`);
-		result.push(`target = pdb.ScriptTarget('${program}')`),
-		result.push(`target.check()`);
-		result.push(`debugger._run(target)`);
-		return result.join('\n');
+		return common.replace(/\$terminator/g, terminator).replace(/\$program/g, program);
 	}
 }
 

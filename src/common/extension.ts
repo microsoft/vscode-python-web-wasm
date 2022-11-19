@@ -21,6 +21,18 @@ function isCossOriginIsolated(): boolean {
 	return false;
 }
 
+function getResourceUri(fileOrUriString: string): Uri | undefined {
+	try {
+		return Uri.parse(fileOrUriString);
+	} catch {
+		try {
+			return Uri.file(fileOrUriString);
+		} catch {
+			return undefined;
+		}
+	}
+}
+
 export class DebugConfigurationProvider implements DebugConfigurationProvider {
 
 	constructor(private readonly preloadPromise: Promise<void>) {
@@ -58,7 +70,7 @@ export class DebugConfigurationProvider implements DebugConfigurationProvider {
 		}
 
 		// Program has to be a URI
-		const targetResource = config.program && config.program !== '${file}' ? Uri.file(config.program) : window.activeTextEditor?.document.uri;
+		const targetResource = config.program && config.program !== '${file}' ? getResourceUri(config.program) : window.activeTextEditor?.document.uri;
 		if (targetResource) {
 			config.program = targetResource.toString();
 		}

@@ -14,14 +14,17 @@ import { Terminals } from './terminals';
 import { DebugCharacterDeviceDriver } from './debugCharacterDeviceDriver';
 
 const StackFrameRegex = /^[>,\s]+(.+)\((\d+)\)(.*)\(\)/;
+const TracebackFrameRegex = /^\s+File "(.+)", line (\d+)/;
 const ScrapeDirOutputRegex = /\[(.*)\]/;
 const BreakpointRegex = /Breakpoint (\d+) at (.+):(\d+)/;
 const PossibleStepExceptionRegex = /^\w+:\s+.*\r*\n>/;
 const PrintExceptionMessage = `debug_pdb_print_exc_message`;
-const SetupExceptionMessage = `alias debug_pdb_print_exc_message !import sys; print(sys.exc_info()[1])`;
+const SetupExceptionMessage = `alias debug_pdb_print_exc_message !import sys; print(sys.exc_info()[1], file=open('/$debug/output', 'w', -1, 'utf-8'))`;
 const PrintExceptionTraceback = `debug_pdb_print_exc_traceback`;
-const SetupExceptionTraceback = `alias debug_pdb_print_exc_traceback !import traceback; import sys; traceback.print_exception(*sys.exc_info())`;
+const SetupExceptionTraceback = `alias debug_pdb_print_exc_traceback !import traceback; import sys; traceback.print_exc(file=open('/$debug/output', 'w', -1, 'utf-8'))`;
 const PdbTerminator = `(Pdb) `;
+const UncaughtExceptionOutput = 'Uncaught exception. Entering post mortem debugging';
+const ProgramFinishedOutput = 'The program finished and will be restarted';
 
 export class DebugAdapter implements vscode.DebugAdapter {
 	private _launcher: Launcher | undefined;
@@ -39,9 +42,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	private _boundBreakpoints: DebugProtocol.Breakpoint[] = [];
 	private _didSendMessageEmitter: vscode.EventEmitter<DebugProtocol.Response | DebugProtocol.Event> =
 		new vscode.EventEmitter<DebugProtocol.Response | DebugProtocol.Event>();
-	
-	private _encoder: SyncRal.TextEncoder = SyncRal().TextEncoder.create();
-	private _decoder: SyncRal.TextDecoder = SyncRal().TextDecoder.create();
+	private _launchComplete: Promise<string>;
+	private _launchCompleteResolver: ((value: string) => void) | undefined;
 		
 	constructor(
 		readonly session: vscode.DebugSession,
@@ -52,6 +54,9 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._workspaceFolder = session.workspaceFolder ||
 			(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0] : undefined);
 		this._cwd = session.configuration.cwd || this._workspaceFolder;
+		this._launchComplete = new Promise((resolve, reject) => {
+			this._launchCompleteResolver = resolve;
+		});
 	}
 	get onDidSendMessage(): vscode.Event<DebugProtocol.ProtocolMessage> {
 		return this._didSendMessageEmitter.event;
@@ -105,7 +110,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 				break;
 
 			case 'configurationDone':
-				this._handleConfigurationDone(message as DebugProtocol.ConfigurationDoneRequest);
+				void this._handleConfigurationDone(message as DebugProtocol.ConfigurationDoneRequest);
 				break;
 
 			case 'continue':
@@ -246,6 +251,21 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		});
 	}
 
+	private async _parseStoppedOutput(output: string, runcommand?: string) {
+		// We should be stopped now. Depends upon why
+		if (output.includes(ProgramFinishedOutput)) {
+			this._handleProgramFinished(output);
+		} else if (output.includes(UncaughtExceptionOutput)) {
+			await this._handleUncaughtException(output);
+		} else if (output.includes('--Return--')) {
+			await this._handleFunctionReturn(output);
+		} else if (output.includes('--Call--')) {
+			await this._handleFunctionCall(output);
+		} else if (runcommand) {
+			await this._handleStopped(runcommand, output);
+		}
+	}
+
 	private _waitForPdbOutput(mode: 'run' | 'command', generator: () => void): Promise<string> {
 		const current = this._outputChain ?? Promise.resolve('');
 		this._outputChain = current.then(() => {
@@ -304,7 +324,11 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 		// Go through each line and return frames that are user code
 		lines.forEach((line, index) => {
-			const frameParts = StackFrameRegex.exec(line);
+			let frameParts = StackFrameRegex.exec(line);
+			// Might be a traceback too
+			if (!frameParts) {
+				frameParts = TracebackFrameRegex.exec(line);
+			}
 			if (frameParts) {
 				const sepIndex = frameParts[1].replace(/\\/g, '/').lastIndexOf('/');
 				const name = sepIndex >= 0 ? frameParts[1].slice(sepIndex) : frameParts[1];
@@ -336,11 +360,18 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 	private async _handleStackTrace(message: DebugProtocol.StackTraceRequest) {
 		// Ask PDB for the current frame
-		const frames = await this._executecommand('where');
+		let frames = await this._executecommand('where');
 
 		// Parse the frames
-		const stackFrames = this._parseStackFrames(frames)
+		let stackFrames = this._parseStackFrames(frames)
 			.filter(f => f.source?.path && this._isMyCode(f.source?.path));
+		
+		// If no frames, might need the stack trace from the an uncaught exception
+		if (this._uncaughtException && stackFrames.length === 0) {
+			frames = await this._executecommand(PrintExceptionTraceback);
+			stackFrames = this._parseStackFrames(frames)
+				.filter(f => f.source?.path && this._isMyCode(f.source?.path));			
+		}
 
 		// Return the stack trace
 		this._sendResponse<DebugProtocol.StackTraceResponse>({
@@ -420,7 +451,10 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		});
 	}
 
-	private _handleConfigurationDone(message: DebugProtocol.ConfigurationDoneRequest) {
+	private async _handleConfigurationDone(message: DebugProtocol.ConfigurationDoneRequest) {
+		// Wait for launch to finish. Can't send configuration done before the launch finishes.
+		const launchOutput = await this._launchComplete;
+
 		this._sendResponse<DebugProtocol.ConfigurationDoneResponse>({
 			success: true,
 			command: message.command,
@@ -429,7 +463,10 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			request_seq: message.seq,
 		});
 
-		if (this._stopOnEntry) {
+		// Our launch may have failed. If so, check now
+		if (launchOutput?.includes(UncaughtExceptionOutput)) {
+			void this._parseStoppedOutput(launchOutput);
+		} else if (this._stopOnEntry) {
 			// Send back the stopped location. This should cause
 			// VS code to ask for the stack frame
 			this._sendStoppedEvent('entry');
@@ -523,7 +560,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _handleProgramFinished(output: string) {
-		const finishedIndex = output.indexOf('The program finished and will be restarted');
+		const finishedIndex = output.indexOf(ProgramFinishedOutput);
 		if (finishedIndex >= 0) {
 			this._sendToUserConsole(output.slice(0, finishedIndex));
 		}
@@ -532,7 +569,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private async _handleUncaughtException(output: string) {
-		const uncaughtIndex = output.indexOf('Uncaught exception. Entering post mortem debugging');
+		const uncaughtIndex = output.indexOf(UncaughtExceptionOutput);
 		if (uncaughtIndex >= 0) {
 			this._sendToUserConsole(output.slice(0, uncaughtIndex));
 		}
@@ -617,18 +654,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			// Then execute our run command
 			const output = await this._waitForPdbOutput('run', () => this._writetostdin(`${runcommand}\n`));
 
-			// We should be stopped now. Depends upon why
-			if (output.includes('The program finished and will be restarted')) {
-				this._handleProgramFinished(output);
-			} else if (output.includes('Uncaught exception. Entering post mortem debugging')) {
-				await this._handleUncaughtException(output);
-			} else if (output.includes('--Return--')) {
-				await this._handleFunctionReturn(output);
-			} else if (output.includes('--Call--')) {
-				await this._handleFunctionCall(output);
-			} else {
-				await this._handleStopped(runcommand, output);
-			}
+			// Parse the output to decide what to do next
+			return this._parseStoppedOutput(output);
 		}, 1);
 	}
 	private async _continue() {
@@ -655,8 +682,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		});
 		this._debuggerDriver = new DebugCharacterDeviceDriver();
 
-		// Wait for debuggee to emit first bit of output before continuing
-		await this._waitForPdbOutput('command', () => {
+		// Wait for debuggee to emit first bit of output before continuing. First bit of output may be an exception that the program crashed
+		const launchOutput = await this._waitForPdbOutput('command', () => {
 			return this._launcher!.debug(this.context, args.program.replace(/\\/g, '/'), this._terminal!, this._debuggerDriver!, PdbTerminator);
 		});
 
@@ -667,7 +694,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		// Send a message to the debug console to indicate started debugging
 		this._sendToDebugConsole(`PDB debugger connected.\r\n`);
 
-		// PDB should have stopped at the entry point and printed out the first line
+		// PDB should have stopped at the entry point and printed out the first line. It may have also just crashed.
 
 		// Start listening for user input
 		this._terminal.setMode(TerminalMode.inUse);
@@ -681,6 +708,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			seq: 1
 		});
 
+		// Indicate okay to send configuration done
+		this._launchCompleteResolver!(launchOutput);
 	}
 
 	private async _stepInto() {
@@ -826,6 +855,11 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _sendToUserConsole(data: string) {
+		// \n should be replaced with \r\n so that
+		// carriage return is sent to the terminal
+		if (data.indexOf('\n') >= 0 && data.indexOf('\r') < 0) {
+			data = data.replace(/\n/g, '\r\n');
+		}
 		this._terminal?.writeString(data);
 	}
 
