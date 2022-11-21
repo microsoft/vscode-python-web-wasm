@@ -40,9 +40,10 @@ export interface Launcher {
 	 * @param context The VS Code extension context.
 	 * @param program The program to run.
 	 * @param pty A pseudo terminal to use for input / output.
+	 * @param terminator Terminator sent by PDB when it is ready to accept commands.
 	 * @returns A promise that completes when the WASM is executing.
 	 */
-	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal, debugPorts: DebugCharacterDeviceDriver): Promise<void>;
+	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal, debugPorts: DebugCharacterDeviceDriver, terminator: String): Promise<void>;
 
 	/**
 	 * Starts a REPL session.
@@ -88,8 +89,8 @@ export abstract class BaseLauncher {
 		return this.doRun('run', context, pty, program);
 	}
 
-	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal, debugPorts: DebugCharacterDeviceDriver): Promise<void> {
-		return this.doRun('debug', context, pty, program, debugPorts);
+	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal, debugPorts: DebugCharacterDeviceDriver, terminator: string): Promise<void> {
+		return this.doRun('debug', context, pty, program, debugPorts, terminator);
 	}
 
 	startRepl(context: ExtensionContext, pty: ServicePseudoTerminal): Promise<void> {
@@ -97,9 +98,9 @@ export abstract class BaseLauncher {
 	}
 
 	private doRun(mode: 'run', context: ExtensionContext, pty: ServicePseudoTerminal, program: string): Promise<void>;
-	private doRun(mode: 'debug', context: ExtensionContext, pty: ServicePseudoTerminal, program: string, debugPorts: DebugCharacterDeviceDriver): Promise<void>;
+	private doRun(mode: 'debug', context: ExtensionContext, pty: ServicePseudoTerminal, program: string, debugPorts: DebugCharacterDeviceDriver, terminator: string): Promise<void>;
 	private doRun(mode: 'repl', context: ExtensionContext, pty: ServicePseudoTerminal): Promise<void>;
-	private async doRun(mode: 'run' | 'debug' | 'repl', context: ExtensionContext, pty: ServicePseudoTerminal,  program?: string, debugPorts?: DebugCharacterDeviceDriver): Promise<void> {
+	private async doRun(mode: 'run' | 'debug' | 'repl', context: ExtensionContext, pty: ServicePseudoTerminal,  program?: string, debugPorts?: DebugCharacterDeviceDriver, terminator?: string): Promise<void> {
 		this.state = { mode, pty, program };
 		const [{ repository, root }, sharedWasmBytes, messageConnection] = await Promise.all([PythonInstallation.getConfig(), PythonInstallation.sharedWasmBytes(), this.createMessageConnection(context)]);
 
@@ -127,7 +128,7 @@ export abstract class BaseLauncher {
 		const runRequest: Promise<number> = mode === 'run'
 			? messageConnection.sendRequest('executeFile', { syncPort: port, file: program! }, [port])
 			: mode === 'debug'
-				? messageConnection.sendRequest('debugFile', { syncPort: port, file: program!, uri: debugPorts!.uri }, [port])
+				? messageConnection.sendRequest('debugFile', { syncPort: port, file: program!, uri: debugPorts!.uri, terminator: terminator! }, [port])
 				: messageConnection.sendRequest('runRepl', { syncPort: port }, [port]);
 
 		runRequest.

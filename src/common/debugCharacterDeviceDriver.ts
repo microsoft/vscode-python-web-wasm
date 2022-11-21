@@ -6,20 +6,26 @@
 
 import * as uuid from 'uuid';
 
-import { Uri } from 'vscode';
+import { Uri, Event, EventEmitter } from 'vscode';
 import { CharacterDeviceDriver, FileDescriptorDescription, RAL as SyncRal } from '@vscode/sync-api-service';
 
 export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
 
 	public readonly uri: Uri;
 	public readonly fileDescriptor: FileDescriptorDescription;
+	public get output(): Event<string> {
+		return this._outputEmitter.event;
+	}
+	public input(str: string): void {
+		this._inputQueue.push(str);
+		this._inputEmitter.fire();
+	}
 
-	private encoder: SyncRal.TextEncoder;
-	private decoder: SyncRal.TextDecoder;
-
-	private cmdIndex: number;
-	private readonly commands: string[];
-
+	private _encoder: SyncRal.TextEncoder = SyncRal().TextEncoder.create();
+	private _decoder: SyncRal.TextDecoder = SyncRal().TextDecoder.create();
+	private _outputEmitter = new EventEmitter<string>();
+	private _inputEmitter = new EventEmitter<void>();
+	private _inputQueue: string[] = [];
 	constructor() {
 		this.uri = Uri.from({ scheme: 'debug', authority: uuid.v4()});
 		this.fileDescriptor = {
@@ -27,24 +33,27 @@ export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
 			uri: this.uri,
 			path: ''
 		};
-		this.encoder = SyncRal().TextEncoder.create();
-		this.decoder = SyncRal().TextDecoder.create();
-		this.commands = [
-			'b app.py:3\n',
-			'c\n',
-			'w\n',
-			'c\n'
-		];
-		this.cmdIndex = 0;
 	}
 
 	write(bytes: Uint8Array): Promise<number> {
 		// We need to slice the bytes since we can't pass a shared array
 		// buffer in the browser to the decode function
-		console.log(this.decoder.decode(bytes.slice()));
+		const str = this._decoder.decode(bytes);
+		this._outputEmitter.fire(str);
 		return Promise.resolve(bytes.byteLength);
 	}
-	read(maxBytesToRead: number): Promise<Uint8Array> {
-		return Promise.resolve(this.encoder.encode(this.commands[this.cmdIndex++]));
+	read(_maxBytesToRead: number): Promise<Uint8Array> {
+		// TODO: Handle inputs longer than maxBytesToRead
+		if (this._inputQueue.length > 0) {
+			return Promise.resolve(this._encoder.encode(this._inputQueue.shift()!));
+		}
+		// No input available, wait for it
+		return new Promise<Uint8Array>((resolve, reject) => {
+			const disposable = this._inputEmitter.event(() => {
+				const bytes = this._encoder.encode(this._inputQueue.shift()! || '');
+				disposable.dispose();
+				resolve(bytes);
+			});
+		});
 	}
 }

@@ -15,6 +15,11 @@ const _ril: RAL = Object.freeze<RAL>({
 			return new WebLauncher();
 		}
 	}),
+	timer: Object.freeze({
+		setTimeout(callback: () => void, timeoutMs: number): any {
+			return setTimeout(callback,timeoutMs);
+		}
+	}),
 	path: path,
 	isCrossOriginIsolated: crossOriginIsolated
 });

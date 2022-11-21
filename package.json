@@ -20,6 +20,7 @@
 	"main": "./dist/desktop/extension.js",
 	"browser": "./dist/web/extension.js",
 	"activationEvents": [
+		"onLanguage:python",
 		"onCommand:vscode-python-web-wasm.debug.runEditorContents",
 		"onCommand:vscode-python-web-wasm.repl.start",
 		"onCommand:vscode-python-web-wasm.debug.debugEditorContents",
@@ -77,7 +78,29 @@
 				"label": "Debug Python in WASM",
 				"configurationAttributes": {
 					"launch": {
-						"properties": {}
+					  	"properties": {
+							"args": {
+								"default": [],
+								"description": "Command line arguments passed to the file.",
+								"items": {
+									"type": "string"
+								},
+								"type": [
+									"array",
+									"string"
+								]
+							},
+							"program": {
+								"default": "${file}",
+								"description": "Absolute path to the python file.",
+								"type": "string"
+							},
+							"stopOnEntry": {
+								"description": "Whether or not to stop the debugger on the first line of the first file",
+								"default": true,
+								"type": "boolean"
+							}
+						}
 					}
 				}
 			}

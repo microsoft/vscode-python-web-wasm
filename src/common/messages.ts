@@ -26,6 +26,7 @@ export type MessageRequests = {
 		syncPort: any;
 		file: string;
 		uri: DTOs.UriComponents;
+		terminator: string;
 	}
 	result: number;
 } | {

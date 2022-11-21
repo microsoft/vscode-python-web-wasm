@@ -3,11 +3,11 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
+import { TerminalMode } from '@vscode/sync-api-service';
 import {
 	CancellationToken, commands, debug, DebugAdapterDescriptor, DebugAdapterInlineImplementation, DebugConfiguration,
 	DebugSession, ExtensionContext, Uri, window, WorkspaceFolder, workspace
 } from 'vscode';
-
 import { DebugAdapter } from './debugAdapter';
 import PythonInstallation from './pythonInstallation';
 import RAL from './ral';
@@ -19,6 +19,18 @@ function isCossOriginIsolated(): boolean {
 	}
 	void window.showWarningMessage(`Executing Python needs cross origin isolation. You need to \nadd ?vscode-coi= to your browser URL to enable it.`, { modal: true});
 	return false;
+}
+
+function getResourceUri(fileOrUriString: string): Uri | undefined {
+	try {
+		return Uri.parse(fileOrUriString);
+	} catch {
+		try {
+			return Uri.file(fileOrUriString);
+		} catch {
+			return undefined;
+		}
+	}
 }
 
 export class DebugConfigurationProvider implements DebugConfigurationProvider {
@@ -46,9 +58,27 @@ export class DebugConfigurationProvider implements DebugConfigurationProvider {
 			}
 		}
 
+		// Stop on entry defaults to true. Assumption being users won't
+		// understand what's happening without it.
+		if (config.stopOnEntry === undefined) {
+			config.stopOnEntry = true;
+		}
+
 		if (!config.program) {
 			await window.showInformationMessage('Cannot find a Python file to debug');
 			return undefined;
+		}
+
+		// Program has to be a URI
+		const targetResource = config.program && config.program !== '${file}' ? getResourceUri(config.program) : window.activeTextEditor?.document.uri;
+		if (targetResource) {
+			config.program = targetResource.toString();
+		}
+
+		if (!config.ptyInfo && targetResource) {
+			const pty = Terminals.getExecutionTerminal(targetResource, true);
+			pty.setMode(TerminalMode.idle); // DebugAdapter will switch to in use
+			config.ptyInfo = { uuid: pty.id };
 		}
 
 		return config;
@@ -60,9 +90,10 @@ export class DebugAdapterDescriptorFactory implements DebugAdapterDescriptorFact
 	}
 	async createDebugAdapterDescriptor(session: DebugSession): Promise<DebugAdapterDescriptor> {
 		await this.preloadPromise;
-		return new DebugAdapterInlineImplementation(new DebugAdapter(session, this.context));
+		return new DebugAdapterInlineImplementation(new DebugAdapter(session, this.context, RAL()));
 	}
 }
+
 
 export function activate(context: ExtensionContext) {
 	const preloadPromise = PythonInstallation.preload();
@@ -105,6 +136,7 @@ export function activate(context: ExtensionContext) {
 			if (targetResource) {
 				await preloadPromise;
 				const pty = Terminals.getExecutionTerminal(targetResource, true);
+				pty.setMode(TerminalMode.idle); // DebugAdapter will switch to in use
 				return debug.startDebugging(undefined, {
 					type: 'python-web-wasm',
 					name: 'Debug Python in WASM',
@@ -149,6 +181,8 @@ export function activate(context: ExtensionContext) {
 
 	const factory = new DebugAdapterDescriptorFactory(context, preloadPromise);
 	context.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
+
+	return preloadPromise;
 }
 
 export function deactivate(): Promise<void> {

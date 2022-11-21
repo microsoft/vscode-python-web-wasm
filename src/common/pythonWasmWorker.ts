@@ -11,25 +11,46 @@ import { WASI, DeviceDescription } from '@vscode/wasm-wasi';
 
 import * as dbgfs from './debugFileSystem';
 import { MessageRequests } from './messages';
+import { debug } from 'vscode';
 
 type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequests, undefined, unknown>;
 
 namespace DebugMain {
-	const common = [
-		`import pdb`,
-		``,
-		`dbgin = open('/$debug/input', 'r', -1, 'utf-8')`,
-		`dbgout = open('/$debug/output', 'w', -1, 'utf-8')`,
-		``,
-		`debugger = pdb.Pdb(stdin=dbgin, stdout=dbgout)`,
-		`debugger.prompt = ''`
-	];
-	export function create(program: string): string {
-		const result = common.slice(0);
-		result.push(`target = pdb.ScriptTarget('${program}')`),
-		result.push(`target.check()`);
-		result.push(`debugger._run(target)`);
-		return result.join('\n');
+	// This is basically the same code in pdb.main, but using _run with a target instead
+	const common = ` 
+import pdb
+
+def opendbgout():
+	return open('/$debug/output', 'w', -1, 'utf-8')
+
+def opendbgin():
+	return open('/$debug/input', 'r', -1, 'utf-8')
+	
+def run(dbg, tgt):
+	try:
+		dbg._run(tgt)
+	except SystemExit:
+		import sys
+		with open('/$debug/output', 'w', -1, 'utf-8') as dbgout:
+			print(sys.exc_info()[1], file=dbgout)
+	except:
+		import traceback
+		import sys
+		with open('/$debug/output', 'w', -1, 'utf-8') as dbgout:
+			traceback.print_exc(file=dbgout)
+			print("Uncaught exception. Entering post mortem debugging", file=dbgout)
+			dbgout.write("$terminator")
+		t = sys.exc_info()[2]
+		dbg.interaction(None, t)
+
+
+debugger = pdb.Pdb(stdin=opendbgin(), stdout=opendbgout())
+debugger.prompt = '$terminator'
+target = pdb.ScriptTarget('$program')
+run(debugger, target)`;
+
+	export function create(program: string, terminator: string): string {
+		return common.replace(/\$terminator/g, terminator).replace(/\$program/g, program);
 	}
 }
 
@@ -54,7 +75,7 @@ export abstract class WasmRunner {
 		});
 
 		connection.onRequest('debugFile', (params) => {
-			return this.debugPythonFile(this.createClientConnection(params.syncPort), URI.parse(params.file), URI.from(params.uri));
+			return this.debugPythonFile(this.createClientConnection(params.syncPort), URI.parse(params.file), URI.from(params.uri), params.terminator);
 		});
 
 		connection.onRequest('runRepl', (params) => {
@@ -72,15 +93,15 @@ export abstract class WasmRunner {
 		return this.run(clientConnection, file);
 	}
 
-	protected async debugPythonFile(clientConnection: ApiClientConnection, file: URI, debug: URI): Promise<number> {
-		return this.run(clientConnection, file, debug);
+	protected async debugPythonFile(clientConnection: ApiClientConnection, file: URI, debug: URI, terminator: string): Promise<number> {
+		return this.run(clientConnection, file, debug, terminator);
 	}
 
 	protected async runRepl(clientConnection: ApiClientConnection): Promise<number> {
 		return this.run(clientConnection, undefined);
 	}
 
-	private async run(clientConnection: ApiClientConnection, file?: URI, debug?: URI): Promise<number> {
+	private async run(clientConnection: ApiClientConnection, file?: URI, debug?: URI, terminator?: string): Promise<number> {
 		const apiClient = new ApiClient(clientConnection);
 		const stdio = (await apiClient.serviceReady()).stdio;
 		const path = this.path;
@@ -107,7 +128,7 @@ export abstract class WasmRunner {
 			: this.pythonRepository.with({ path: path.join( this.pythonRepository.path, this.pythonRoot )});
 		devices.push({ kind: 'fileSystem', uri: pythonInstallation, mountPoint: path.sep});
 		if (debug !== undefined && toRun !== undefined) {
-			const mainContent = DebugMain.create(toRun);
+			const mainContent = DebugMain.create(toRun, terminator || '');
 			devices.push({
 				kind:'custom',
 				uri: debug,
