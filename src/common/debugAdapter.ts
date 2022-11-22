@@ -49,8 +49,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		new vscode.EventEmitter<DebugProtocol.Response | DebugProtocol.Event>();
 	private _launchComplete: Promise<string>;
 	private _launchCompleteResolver: ((value: string) => void) | undefined;
-	private _pathMappings: Map<string, vscode.Uri>;
-	private _uriMounts: Set<string>;
+	private _wasmPath2WorkspaceUri: Map<string, vscode.Uri>;
+	private _workspaceUri2WasmPath: Map<string, string>;
 
 	constructor(
 		readonly session: vscode.DebugSession,
@@ -64,8 +64,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._launchComplete = new Promise((resolve, reject) => {
 			this._launchCompleteResolver = resolve;
 		});
-		this._pathMappings = new Map();
-		this._uriMounts = new Set();
+		this._wasmPath2WorkspaceUri = new Map();
+		this._workspaceUri2WasmPath = new Map();
 	}
 	get onDidSendMessage(): vscode.Event<DebugProtocol.ProtocolMessage> {
 		return this._didSendMessageEmitter.event;
@@ -294,21 +294,20 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 	private _translateToWorkspacePath(wasmPath: string): string {
 		const normalized = wasmPath.replace(/\\/g, '/');
-		for (const key of this._pathMappings.keys()) {
+		for (const [key, uri] of this._wasmPath2WorkspaceUri) {
 			if (normalized.startsWith(key)) {
-				const uri = this._pathMappings.get(key)!;
 				return uri.with({ path: RAL().path.join(uri.path, normalized.substring(key.length))}).toString();
 			}
 		}
 		return normalized;
 	}
 
-	private _translateFromWorkspacePath(workspacePath: string) {
+	private _translateFromWorkspacePath(workspacePath: string): string {
 		const normalized = workspacePath.replace(/\\/g, '/');
-		const root = this._workspaceFolder?.uri.fsPath.replace(/\\/g, '/');
-		if (root && normalized.startsWith(root)) {
-			// workspace path, translate to workspace path
-			return `/workspace${normalized.slice(root.length)}`;
+		for (const [key, wasmPath] of this._workspaceUri2WasmPath) {
+			if (normalized.startsWith(key)) {
+				return RAL().path.join(wasmPath, normalized.substring(key.length));
+			}
 		}
 		return normalized;
 	}
@@ -543,7 +542,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _isMyCode(file: string): boolean {
-		for (const value of this._uriMounts.values()) {
+		for (const value of this._workspaceUri2WasmPath.keys()) {
 			if (file.startsWith(value)) {
 				return true;
 			}
@@ -668,16 +667,16 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._terminal = Terminals.getTerminalInUse(uuid)!;
 		this._launcher = RAL().launcher.create();
 		this._launcher.onPathMapping((mappings) => {
-			this._pathMappings.clear();
-			this._uriMounts.clear();
+			this._wasmPath2WorkspaceUri.clear();
+			this._workspaceUri2WasmPath.clear();
 			for (const key of Object.keys(mappings)) {
 				const uri = vscode.Uri.from(mappings[key]);
 				if (key[key.length - 1] !== '/') {
-					this._pathMappings.set(`${key}/`, uri);
+					this._wasmPath2WorkspaceUri.set(`${key}/`, uri);
 				} else {
-					this._pathMappings.set(key, uri);
+					this._wasmPath2WorkspaceUri.set(key, uri);
 				}
-				this._uriMounts.add(uri.toString());
+				this._workspaceUri2WasmPath.set(`${uri.toString()}/`, key);
 			}
 		});
 		this._launcher.onExit().then((_rval) => {
