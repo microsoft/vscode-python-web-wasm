@@ -8,11 +8,11 @@ import * as _path from 'path';
 const path = _path.posix;
 import { MessagePort, parentPort } from 'worker_threads';
 
-import { ClientConnection, Requests, MessageConnection } from '@vscode/sync-api-common/node';
+import { ClientConnection, Requests, MessageConnection as SyncMessageConnection } from '@vscode/sync-api-common/node';
 import { ApiClientConnection, WASI } from '@vscode/wasm-wasi/node';
 
 import { WasmRunner } from '../common/pythonWasmWorker';
-import { MessageRequests } from '../common/messages';
+import { MessageRequests, MessageNotifications } from '../common/messages';
 
 if (parentPort === null) {
 	process.exit();
@@ -20,7 +20,7 @@ if (parentPort === null) {
 
 class NodeWasmRunner extends WasmRunner {
 	constructor(port: MessagePort) {
-		super(new MessageConnection<undefined, undefined, MessageRequests, undefined>(port), path);
+		super(new SyncMessageConnection<undefined, MessageNotifications, MessageRequests, undefined>(port), path);
 	}
 
 	protected createClientConnection(port: MessagePort): ApiClientConnection {

@@ -3,16 +3,16 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { ExtensionContext, Terminal } from 'vscode';
+import { ExtensionContext, Terminal, Event, EventEmitter } from 'vscode';
 
-import { ApiServiceConnection, BaseMessageConnection, ServicePseudoTerminal } from '@vscode/sync-api-service';
+import { ApiServiceConnection, BaseMessageConnection, DTOs, ServicePseudoTerminal } from '@vscode/sync-api-service';
 import { ApiService } from '@vscode/sync-api-service';
 
 import PythonInstallation from './pythonInstallation';
-import { MessageRequests } from './messages';
+import { MessageRequests, MessageNotifications } from './messages';
 import { DebugCharacterDeviceDriver } from './debugCharacterDeviceDriver';
 
-type MessageConnection = BaseMessageConnection<MessageRequests, undefined, undefined, undefined, any>;
+export type MessageConnection = BaseMessageConnection<MessageRequests, undefined, undefined, MessageNotifications, any>;
 
 type LauncherState = {
 	mode: 'run' | 'debug' | 'repl';
@@ -22,6 +22,15 @@ type LauncherState = {
 
 export interface Launcher {
 
+	/**
+	 * An event that signals the path mapping used by the
+	 * WASM runtime
+	 */
+	onPathMapping: Event<PathMapping>;
+
+	/**
+	 * The launcher state.
+	 */
 	getState(): LauncherState | undefined;
 
 	/**
@@ -64,6 +73,10 @@ export interface Launcher {
 	terminate(): Promise<void>;
 }
 
+export type PathMapping = {
+	[mountPoint: string]: DTOs.UriComponents;
+};
+
 export abstract class BaseLauncher {
 
 	private readonly exitPromise: Promise<number>;
@@ -74,26 +87,32 @@ export abstract class BaseLauncher {
 
 	private state: undefined | LauncherState;
 
+	private _onPathMapping: EventEmitter<PathMapping>;
+
 	public constructor() {
 		this.exitPromise = new Promise((resolve, reject) => {
 			this.exitResolveCallback = resolve;
 			this.exitRejectCallback = reject;
 		});
+		this._onPathMapping = new EventEmitter();
+		this.onPathMapping = this._onPathMapping.event;
 	}
 
-	getState(): LauncherState | undefined {
+	public onPathMapping: Event<PathMapping>;
+
+	public getState(): LauncherState | undefined {
 		return this.state;
 	}
 
-	run(context: ExtensionContext, program: string, pty: ServicePseudoTerminal): Promise<void> {
+	public run(context: ExtensionContext, program: string, pty: ServicePseudoTerminal): Promise<void> {
 		return this.doRun('run', context, pty, program);
 	}
 
-	debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal, debugPorts: DebugCharacterDeviceDriver, terminator: string): Promise<void> {
+	public debug(context: ExtensionContext, program: string, pty: ServicePseudoTerminal, debugPorts: DebugCharacterDeviceDriver, terminator: string): Promise<void> {
 		return this.doRun('debug', context, pty, program, debugPorts, terminator);
 	}
 
-	startRepl(context: ExtensionContext, pty: ServicePseudoTerminal): Promise<void> {
+	public startRepl(context: ExtensionContext, pty: ServicePseudoTerminal): Promise<void> {
 		return this.doRun('repl', context, pty);
 	}
 
@@ -105,6 +124,9 @@ export abstract class BaseLauncher {
 		const [{ repository, root }, sharedWasmBytes, messageConnection] = await Promise.all([PythonInstallation.getConfig(), PythonInstallation.sharedWasmBytes(), this.createMessageConnection(context)]);
 
 		messageConnection.listen();
+		messageConnection.onNotification('pathMappings', (params) => {
+			this._onPathMapping.fire(params.mapping);
+		});
 		// Send initialize to the worker. We could cache them in the future.
 		await messageConnection.sendRequest('initialize', {
 			pythonRepository: repository.toString(true),

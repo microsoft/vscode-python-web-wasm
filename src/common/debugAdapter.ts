@@ -9,7 +9,7 @@ import { DebugProtocol } from '@vscode/debugprotocol';
 import { ServicePseudoTerminal, RAL as SyncRal, TerminalMode } from '@vscode/sync-api-service';
 import RAL from './ral';
 import { Response } from './debugMessages';
-import { Launcher } from './launcher';
+import { Launcher, PathMapping } from './launcher';
 import { Terminals } from './terminals';
 import { DebugCharacterDeviceDriver } from './debugCharacterDeviceDriver';
 
@@ -49,7 +49,9 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		new vscode.EventEmitter<DebugProtocol.Response | DebugProtocol.Event>();
 	private _launchComplete: Promise<string>;
 	private _launchCompleteResolver: ((value: string) => void) | undefined;
-		
+	private _wasmPath2WorkspaceUri: Map<string, vscode.Uri>;
+	private _workspaceUri2WasmPath: Map<string, string>;
+
 	constructor(
 		readonly session: vscode.DebugSession,
 		readonly context: vscode.ExtensionContext,
@@ -58,17 +60,22 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._stopOnEntry = session.configuration.stopOnEntry;
 		this._workspaceFolder = session.workspaceFolder ||
 			(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0] : undefined);
-		this._cwd = session.configuration.cwd || this._workspaceFolder;
+		this._cwd = session.configuration.cwd ?? this._workspaceFolder?.uri.toString();
 		this._launchComplete = new Promise((resolve, reject) => {
 			this._launchCompleteResolver = resolve;
 		});
+		this._wasmPath2WorkspaceUri = new Map();
+		this._workspaceUri2WasmPath = new Map();
 	}
 	get onDidSendMessage(): vscode.Event<DebugProtocol.ProtocolMessage> {
 		return this._didSendMessageEmitter.event;
 	}
 	handleMessage(message: DebugProtocol.ProtocolMessage): void {
 		if (message.type === 'request') {
-			this._handleRequest(message as DebugProtocol.Request);
+			this._handleRequest(message as DebugProtocol.Request).catch((error) => {
+				// Todo@dirkb Wie should think about a output channel to log this
+				console.error(`Unexpected error occured when handling debugger request`, error);
+			});
 		}
 	}
 	dispose() {
@@ -81,74 +88,58 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		}
 	}
 
-	private _handleRequest(message: DebugProtocol.Request) {
+	private async _handleRequest(message: DebugProtocol.Request): Promise<void> {
 		switch (message.command) {
 			case 'launch':
-				void this._handleLaunch(message as DebugProtocol.LaunchRequest);
-				break;
+				return this._handleLaunch(message as DebugProtocol.LaunchRequest);
 
 			case 'disconnect':
-				this._handleDisconnect(message as DebugProtocol.DisconnectRequest);
+				return this._handleDisconnect(message as DebugProtocol.DisconnectRequest);
 
 			case 'initialize':
-				this._handleInitialize(message as DebugProtocol.InitializeRequest);
-				break;
+				return this._handleInitialize(message as DebugProtocol.InitializeRequest);
 
 			case 'threads':
-				this._handleThreads(message as DebugProtocol.ThreadsRequest);
-				break;
+				return this._handleThreads(message as DebugProtocol.ThreadsRequest);
 
 			case 'stackTrace':
-				void this._handleStackTrace(message as DebugProtocol.StackTraceRequest);
-				break;
+				return this._handleStackTrace(message as DebugProtocol.StackTraceRequest);
 
 			case 'scopes':
-				void this._handleScopesRequest(message as DebugProtocol.ScopesRequest);
-				break;
+				return this._handleScopesRequest(message as DebugProtocol.ScopesRequest);
 
 			case 'variables':
-				void this._handleVariablesRequest(message as DebugProtocol.VariablesRequest);
-				break;
+				return this._handleVariablesRequest(message as DebugProtocol.VariablesRequest);
 
 			case 'setBreakpoints':
-				void this._handleSetBreakpointsRequest(message as DebugProtocol.SetBreakpointsRequest);
-				break;
+				return this._handleSetBreakpointsRequest(message as DebugProtocol.SetBreakpointsRequest);
 
 			case 'configurationDone':
-				void this._handleConfigurationDone(message as DebugProtocol.ConfigurationDoneRequest);
-				break;
+				return this._handleConfigurationDone(message as DebugProtocol.ConfigurationDoneRequest);
 
 			case 'continue':
-				this._handleContinue(message as DebugProtocol.ContinueRequest);
-				break;
-				
+				return this._handleContinue(message as DebugProtocol.ContinueRequest);
+
 			case 'terminate':
-				this._handleTerminate(message as DebugProtocol.TerminateRequest);
-				break;
+				return this._handleTerminate(message as DebugProtocol.TerminateRequest);
 
 			case 'next':
-				void this._handleNext(message as DebugProtocol.NextRequest);
-				break;
+				return this._handleNext(message as DebugProtocol.NextRequest);
 
 			case 'stepIn':
-				void this._handleStepIn(message as DebugProtocol.StepInRequest);
-				break;
+				return this._handleStepIn(message as DebugProtocol.StepInRequest);
 
 			case 'stepOut':
-				void this._handleStepOut(message as DebugProtocol.StepOutRequest);
-				break;
+				return this._handleStepOut(message as DebugProtocol.StepOutRequest);
 
 			case 'evaluate':
-				void this._handleEvaluate(message as DebugProtocol.EvaluateRequest);
-				break;
+				return this._handleEvaluate(message as DebugProtocol.EvaluateRequest);
 
 			case 'exceptionInfo':
-				void this._handleExceptionInfo(message as DebugProtocol.ExceptionInfoRequest);
-				break;
+				return this._handleExceptionInfo(message as DebugProtocol.ExceptionInfoRequest);
 
 			default:
-				this._sendResponse(new Response(message, `Unhandled request ${message.command}`));
-				break;
+				return this._sendResponse(new Response(message, `Unhandled request ${message.command}`));
 		}
 	}
 
@@ -301,22 +292,22 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		return this._outputChain;
 	}
 
-	private _translateToWorkspacePath(wasmPath: string) {
+	private _translateToWorkspacePath(wasmPath: string): string {
 		const normalized = wasmPath.replace(/\\/g, '/');
-		if (normalized.startsWith('/workspace/') && this._workspaceFolder) {
-			const root = this._workspaceFolder.uri.fsPath.replace(/\\/g, '/');
-			// Wasm path, translate to workspace path
-			return `${root}/${normalized.slice('/workspace/'.length)}`;
+		for (const [key, uri] of this._wasmPath2WorkspaceUri) {
+			if (normalized.startsWith(key)) {
+				return uri.with({ path: RAL().path.join(uri.path, normalized.substring(key.length))}).toString();
+			}
 		}
 		return normalized;
 	}
 
-	private _translateFromWorkspacePath(workspacePath: string) {
+	private _translateFromWorkspacePath(workspacePath: string): string {
 		const normalized = workspacePath.replace(/\\/g, '/');
-		const root = this._workspaceFolder?.uri.fsPath.replace(/\\/g, '/');
-		if (root && normalized.startsWith(root)) {
-			// workspace path, translate to workspace path
-			return `/workspace${normalized.slice(root.length)}`;
+		for (const [key, wasmPath] of this._workspaceUri2WasmPath) {
+			if (normalized.startsWith(key)) {
+				return RAL().path.join(wasmPath, normalized.substring(key.length));
+			}
 		}
 		return normalized;
 	}
@@ -370,12 +361,12 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		// Parse the frames
 		let stackFrames = this._parseStackFrames(frames)
 			.filter(f => f.source?.path && this._isMyCode(f.source?.path));
-		
+
 		// If no frames, might need the stack trace from the an uncaught exception
 		if (this._uncaughtException && stackFrames.length === 0) {
 			frames = await this._executecommand(PrintExceptionTraceback);
 			stackFrames = this._parseStackFrames(frames)
-				.filter(f => f.source?.path && this._isMyCode(f.source?.path));			
+				.filter(f => f.source?.path && this._isMyCode(f.source?.path));
 		}
 
 		// Return the stack trace
@@ -551,17 +542,15 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _isMyCode(file: string): boolean {
-		// Determine if this file is in the current workspace or not
-		if (file.startsWith('/workspace')) {
-			return true;
-		}else if (this._workspaceFolder) {
-			const root = this._workspaceFolder.uri.fsPath.toLowerCase().replace(/\\/g, '/');
-			return file.toLowerCase().startsWith(root);
-		} else {
-			// Otherwise no workspace folder and just a loose file. Use the starting file
-			const root = this._cwd?.toLowerCase().replace(/\\/g, '/');
-			return root ? file.toLowerCase().startsWith(root) : false;
+		for (const value of this._workspaceUri2WasmPath.keys()) {
+			if (file.startsWith(value)) {
+				return true;
+			}
 		}
+
+		// Otherwise no workspace folder and just a loose file. Use the starting file
+		const root = this._cwd?.toLowerCase().replace(/\\/g, '/');
+		return root ? file.toLowerCase().startsWith(root) : false;
 	}
 
 	private _handleProgramFinished(output: string) {
@@ -677,6 +666,19 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		const uuid = args.ptyInfo.uuid;
 		this._terminal = Terminals.getTerminalInUse(uuid)!;
 		this._launcher = RAL().launcher.create();
+		this._launcher.onPathMapping((mappings) => {
+			this._wasmPath2WorkspaceUri.clear();
+			this._workspaceUri2WasmPath.clear();
+			for (const key of Object.keys(mappings)) {
+				const uri = vscode.Uri.from(mappings[key]);
+				if (key[key.length - 1] !== '/') {
+					this._wasmPath2WorkspaceUri.set(`${key}/`, uri);
+				} else {
+					this._wasmPath2WorkspaceUri.set(key, uri);
+				}
+				this._workspaceUri2WasmPath.set(`${uri.toString()}/`, key);
+			}
+		});
 		this._launcher.onExit().then((_rval) => {
 			this._launcher = undefined;
 			this._sendTerminated();

@@ -105,6 +105,11 @@
 				}
 			}
 		],
+		"breakpoints": [
+			{
+				"language": "python"
+			}
+		],
 		"menus": {
 			"editor/title/run": [
 				{

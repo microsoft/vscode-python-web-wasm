@@ -3,7 +3,7 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { DTOs } from '@vscode/sync-api-service';
+import type { DTOs } from '@vscode/sync-api-service';
 
 export type MessageRequests = {
 	method: 'initialize',
@@ -35,4 +35,12 @@ export type MessageRequests = {
 		syncPort: any
 	},
 	result: number;
+};
+
+export type MessageNotifications = {
+	method: 'pathMappings',
+	params: {
+		mapping: { [key: string]: DTOs.UriComponents; };
+	},
+	result: void;
 };

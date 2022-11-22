@@ -6,18 +6,17 @@
 // We can't use Uri from vscode since vscode is not available in a web worker.
 import { URI } from 'vscode-uri';
 
-import { ApiClient, BaseMessageConnection, ApiClientConnection } from '@vscode/sync-api-client';
+import { ApiClient, BaseMessageConnection, ApiClientConnection, DTOs } from '@vscode/sync-api-client';
 import { WASI, DeviceDescription } from '@vscode/wasm-wasi';
 
 import * as dbgfs from './debugFileSystem';
-import { MessageRequests } from './messages';
-import { debug } from 'vscode';
+import { MessageRequests, MessageNotifications } from './messages';
 
-type MessageConnection = BaseMessageConnection<undefined, undefined, MessageRequests, undefined, unknown>;
+export type MessageConnection = BaseMessageConnection<undefined, MessageNotifications, MessageRequests, undefined, any>;
 
 namespace DebugMain {
 	// This is basically the same code in pdb.main, but using _run with a target instead
-	const common = ` 
+	const common = `
 import pdb
 
 def opendbgout():
@@ -25,7 +24,7 @@ def opendbgout():
 
 def opendbgin():
 	return open('/$debug/input', 'r', -1, 'utf-8')
-	
+
 def run(dbg, tgt):
 	try:
 		dbg._run(tgt)
@@ -110,9 +109,12 @@ export abstract class WasmRunner {
 		const workspaceFolders = apiClient.vscode.workspace.workspaceFolders;
 		const devices: DeviceDescription[] = [];
 		let toRun: string | undefined;
+		const pathMappings: { [key: string]: DTOs.UriComponents; } = Object.create(null);
 		if (workspaceFolders.length === 1) {
 			const folderUri = workspaceFolders[0].uri;
-			devices.push({ kind: 'fileSystem',  uri: workspaceFolders[0].uri, mountPoint: path.join(path.sep, 'workspace') });
+			const device: DeviceDescription = { kind: 'fileSystem',  uri: workspaceFolders[0].uri, mountPoint: path.join(path.sep, 'workspace') };
+			pathMappings[device.mountPoint] = device.uri.toJSON();
+			devices.push(device);
 			if (file !== undefined) {
 				if (file.toString().startsWith(folderUri.toString())) {
 					toRun = path.join(path.sep, 'workspace', file.toString().substring(folderUri.toString().length));
@@ -120,13 +122,19 @@ export abstract class WasmRunner {
 			}
 		} else {
 			for (const folder of workspaceFolders) {
-				devices.push({ kind: 'fileSystem',  uri: folder.uri, mountPoint: path.join(path.sep, 'workspaces', folder.name) });
+				const device: DeviceDescription = { kind: 'fileSystem',  uri: folder.uri, mountPoint: path.join(path.sep, 'workspaces', folder.name) };
+				pathMappings[device.mountPoint] = device.uri.toJSON();
+				devices.push(device);
 			}
 		}
 		const pythonInstallation = this.pythonRoot === undefined
 			? this.pythonRepository
-			: this.pythonRepository.with({ path: path.join( this.pythonRepository.path, this.pythonRoot )});
+			: this.pythonRepository.with({ path: path.join(this.pythonRepository.path, this.pythonRoot) });
+		// Ususaly we would mount the python installation into /usr but that doesn't work due to a bug
+		// in Python WASM right now. So we mount it into / but cheat a little with the path mapping to not
+		// have a mapping on root.
 		devices.push({ kind: 'fileSystem', uri: pythonInstallation, mountPoint: path.sep});
+		pathMappings['/lib/python3.11'] = pythonInstallation.with({ path: path.join(pythonInstallation.path, 'lib/python3.11') }).toJSON();
 		if (debug !== undefined && toRun !== undefined) {
 			const mainContent = DebugMain.create(toRun, terminator || '');
 			devices.push({
@@ -142,6 +150,7 @@ export abstract class WasmRunner {
 		const exitHandler = (rval: number): void => {
 			exitCode = rval;
 		};
+		this.connection.sendNotification('pathMappings', { mapping: pathMappings });
 		const wasi = WASI.create(name, apiClient, exitHandler, devices, stdio, {
 			args: toRun !== undefined ? ['-B', '-X', 'utf8', toRun] : ['-B', '-X', 'utf8'],
 			env: {

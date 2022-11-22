@@ -4,15 +4,15 @@
  * ------------------------------------------------------------------------------------------ */
 import path from 'path-browserify';
 
-import { ClientConnection, Requests, MessageConnection } from '@vscode/sync-api-common/browser';
+import { ClientConnection, Requests, MessageConnection as SyncMessageConnection } from '@vscode/sync-api-common/browser';
 import { ApiClientConnection, WASI } from '@vscode/wasm-wasi/browser';
 
-import { WasmRunner } from '../common/pythonWasmWorker';
-import { MessageRequests } from '../common/messages';
+import { WasmRunner, MessageConnection } from '../common/pythonWasmWorker';
+import { MessageRequests, MessageNotifications } from '../common/messages';
 
 class WebWasmRunner extends WasmRunner {
 	constructor(port: MessagePort) {
-		super(new MessageConnection<undefined, undefined, MessageRequests, undefined>(port), path);
+		super(new SyncMessageConnection<undefined, MessageNotifications, MessageRequests, undefined>(port), path);
 	}
 
 	protected createClientConnection(port: MessagePort): ApiClientConnection {
