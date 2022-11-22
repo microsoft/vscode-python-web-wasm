@@ -7,12 +7,12 @@ import { ExtensionContext, Uri } from 'vscode';
 
 import { MessageChannel, Worker } from 'worker_threads';
 
-import { BaseLauncher } from '../common/launcher';
+import { BaseLauncher, MessageConnection } from '../common/launcher';
 
-import { ServiceConnection, MessageConnection } from '@vscode/sync-api-common/node';
+import { ServiceConnection, MessageConnection as SyncMessageConnection } from '@vscode/sync-api-common/node';
 
 import { ApiServiceConnection, Requests } from '@vscode/sync-api-service';
-import { MessageRequests } from '../common/messages';
+import { MessageRequests, MessageNotifications } from '../common/messages';
 
 export class DesktopLauncher extends BaseLauncher {
 
@@ -22,7 +22,7 @@ export class DesktopLauncher extends BaseLauncher {
 		super();
 	}
 
-	protected async createMessageConnection(context: ExtensionContext): Promise<MessageConnection<MessageRequests, undefined>> {
+	protected async createMessageConnection(context: ExtensionContext): Promise<MessageConnection> {
 		const filename = Uri.joinPath(context.extensionUri, './dist/desktop/pythonWasmWorker.js').fsPath;
 		this.worker = new Worker(filename);
 		const channel = new MessageChannel();
@@ -41,10 +41,10 @@ export class DesktopLauncher extends BaseLauncher {
 		});
 		this.worker.postMessage(channel.port2, [channel.port2]);
 		await ready;
-		return new MessageConnection<MessageRequests, undefined>(channel.port1);
+		return new SyncMessageConnection<MessageRequests, undefined, undefined, MessageNotifications>(channel.port1);
 	}
 
-	protected async createSyncConnection(messageConnection: MessageConnection<MessageRequests, undefined>): Promise<[ApiServiceConnection, any]> {
+	protected async createSyncConnection(messageConnection: MessageConnection): Promise<[ApiServiceConnection, any]> {
 		const channel = new MessageChannel();
 		const result = new ServiceConnection<Requests, ApiServiceConnection.ReadyParams>(channel.port1);
 		return [result, channel.port2];

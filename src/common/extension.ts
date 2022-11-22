@@ -3,14 +3,16 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { TerminalMode } from '@vscode/sync-api-service';
 import {
 	CancellationToken, commands, debug, DebugAdapterDescriptor, DebugAdapterInlineImplementation, DebugConfiguration,
 	DebugSession, ExtensionContext, Uri, window, WorkspaceFolder, workspace
 } from 'vscode';
-import { DebugAdapter } from './debugAdapter';
-import PythonInstallation from './pythonInstallation';
+
+import { TerminalMode } from '@vscode/sync-api-service';
+
 import RAL from './ral';
+import PythonInstallation from './pythonInstallation';
+import { DebugAdapter } from './debugAdapter';
 import { Terminals } from './terminals';
 
 function isCossOriginIsolated(): boolean {
