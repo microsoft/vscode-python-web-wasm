@@ -49,6 +49,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		new vscode.EventEmitter<DebugProtocol.Response | DebugProtocol.Event>();
 	private _launchComplete: Promise<string>;
 	private _launchCompleteResolver: ((value: string) => void) | undefined;
+	private _pathMappingsComplete: Promise<void>;
+	private _pathMappingsCompleteResolver: (() => void) | undefined;
 	private _wasmPath2WorkspaceUri: Map<string, vscode.Uri>;
 	private _workspaceUri2WasmPath: Map<string, string>;
 
@@ -63,6 +65,9 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._cwd = session.configuration.cwd ?? this._workspaceFolder?.uri.toString();
 		this._launchComplete = new Promise((resolve, reject) => {
 			this._launchCompleteResolver = resolve;
+		});
+		this._pathMappingsComplete = new Promise((resolve, reject) => {
+			this._pathMappingsCompleteResolver = resolve;
 		});
 		this._wasmPath2WorkspaceUri = new Map();
 		this._workspaceUri2WasmPath = new Map();
@@ -292,7 +297,10 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		return this._outputChain;
 	}
 
-	private _translateToWorkspacePath(wasmPath: string): string {
+	private async _translateToWorkspacePath(wasmPath: string): Promise<string> {
+		// Have to wait for path mappings to come in from the device
+		await this._pathMappingsComplete;
+
 		const normalized = wasmPath.replace(/\\/g, '/');
 		for (const [key, uri] of this._wasmPath2WorkspaceUri) {
 			if (normalized.startsWith(key)) {
@@ -302,8 +310,24 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		return normalized;
 	}
 
-	private _translateFromWorkspacePath(workspacePath: string): string {
-		const normalized = workspacePath.replace(/\\/g, '/');
+	private _convertToUriString(path: string): string {
+		if (path.includes('://')) {
+			return path;
+		} else {
+			try {
+				const output = vscode.Uri.file(path);
+				return output.toString();
+			} catch {
+				return path;
+			}
+		}
+	}
+
+	private async _translateFromWorkspacePath(workspacePath: string): Promise<string> {
+		// Have to wait for path mappings to come in from the device
+		await this._pathMappingsComplete;
+
+		const normalized = this._convertToUriString(workspacePath.replace(/\\/g, '/'));
 		for (const [key, wasmPath] of this._workspaceUri2WasmPath) {
 			if (normalized.startsWith(key)) {
 				return RAL().path.join(wasmPath, normalized.substring(key.length));
@@ -312,14 +336,14 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		return normalized;
 	}
 
-	private _parseStackFrames(frames: string): DebugProtocol.StackFrame[] {
+	private async _parseStackFrames(frames: string): Promise<DebugProtocol.StackFrame[]> {
 		let result: DebugProtocol.StackFrame[] = [];
 
 		// Split frames into lines
 		const lines = frames.replace(/\r/g, '').split('\n');
 
 		// Go through each line and return frames that are user code
-		lines.forEach((line, index) => {
+		await Promise.all(lines.map(async (line, index) => {
 			let frameParts = StackFrameRegex.exec(line);
 			// Might be a traceback too
 			if (!frameParts) {
@@ -328,7 +352,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			if (frameParts) {
 				const sepIndex = frameParts[1].replace(/\\/g, '/').lastIndexOf('/');
 				const name = sepIndex >= 0 ? frameParts[1].slice(sepIndex) : frameParts[1];
-				const translatedPath = this._translateToWorkspacePath(frameParts[1]);
+				const translatedPath = await this._translateToWorkspacePath(frameParts[1]);
 				// Insert at the front so last frame is on front of list
 				result.splice(0, 0, {
 					id: result.length+1,
@@ -342,7 +366,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 					column: 0
 				});
 			}
-		});
+		}));
 
 		// Reverse the ids
 		result = result.map((v, i) => {
@@ -359,13 +383,13 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		let frames = await this._executecommand('where');
 
 		// Parse the frames
-		let stackFrames = this._parseStackFrames(frames)
+		let stackFrames = (await this._parseStackFrames(frames))
 			.filter(f => f.source?.path && this._isMyCode(f.source?.path));
 
 		// If no frames, might need the stack trace from the an uncaught exception
 		if (this._uncaughtException && stackFrames.length === 0) {
 			frames = await this._executecommand(PrintExceptionTraceback);
-			stackFrames = this._parseStackFrames(frames)
+			stackFrames = (await this._parseStackFrames(frames))
 				.filter(f => f.source?.path && this._isMyCode(f.source?.path));
 		}
 
@@ -511,7 +535,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		// Use the 'b' command to create breakpoints
 		if (message.arguments.breakpoints) {
 			await Promise.all(message.arguments.breakpoints.map(async (b) => {
-				const wasmPath = this._translateFromWorkspacePath(message.arguments.source.path || '');
+				const wasmPath = await this._translateFromWorkspacePath(message.arguments.source.path || '');
 				const result = await this._executecommand(`b ${wasmPath}:${b.line}`);
 				const parsed = BreakpointRegex.exec(result);
 				if (parsed) {
@@ -519,7 +543,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 						id: parseInt(parsed[1]),
 						line: parseInt(parsed[3]),
 						source: {
-							path: this._translateToWorkspacePath(parsed[2])
+							path: await this._translateToWorkspacePath(parsed[2])
 						},
 						verified: true
 					};
@@ -608,7 +632,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		}
 
 		// Parse the output. It should have the frames in it
-		const frames = this._parseStackFrames(output);
+		const frames = await this._parseStackFrames(output);
 
 		// The topmost frame needs to be 'my code' or we should step out of the current
 		// frame
@@ -666,19 +690,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		const uuid = args.ptyInfo.uuid;
 		this._terminal = Terminals.getTerminalInUse(uuid)!;
 		this._launcher = RAL().launcher.create();
-		this._launcher.onPathMapping((mappings) => {
-			this._wasmPath2WorkspaceUri.clear();
-			this._workspaceUri2WasmPath.clear();
-			for (const key of Object.keys(mappings)) {
-				const uri = vscode.Uri.from(mappings[key]);
-				if (key[key.length - 1] !== '/') {
-					this._wasmPath2WorkspaceUri.set(`${key}/`, uri);
-				} else {
-					this._wasmPath2WorkspaceUri.set(key, uri);
-				}
-				this._workspaceUri2WasmPath.set(`${uri.toString()}/`, key);
-			}
-		});
+		this._launcher.onPathMapping(this._handlePathMappings.bind(this));
 		this._launcher.onExit().then((_rval) => {
 			this._launcher = undefined;
 			this._sendTerminated();
@@ -719,6 +731,21 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 		// Indicate okay to send configuration done
 		this._launchCompleteResolver!(launchOutput);
+	}
+
+	private _handlePathMappings(mappings: PathMapping) {
+		this._wasmPath2WorkspaceUri.clear();
+		this._workspaceUri2WasmPath.clear();
+		for (const key of Object.keys(mappings)) {
+			const uri = vscode.Uri.from(mappings[key]);
+			if (key[key.length - 1] !== '/') {
+				this._wasmPath2WorkspaceUri.set(`${key}/`, uri);
+			} else {
+				this._wasmPath2WorkspaceUri.set(key, uri);
+			}
+			this._workspaceUri2WasmPath.set(`${uri.toString()}/`, key);
+		}
+		this._pathMappingsCompleteResolver!();
 	}
 
 	private async _stepInto() {
