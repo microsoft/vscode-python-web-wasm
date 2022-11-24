@@ -28,10 +28,6 @@
 			"preLaunchTask": "watch",
 			"request": "launch",
 			"type": "extensionHost"
-		},
-		{
-			"type": "node",
-			"console": "internalConsole"
 		}
 	]
 }
