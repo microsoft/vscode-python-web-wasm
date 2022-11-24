@@ -12,7 +12,7 @@ import { TerminalMode } from '@vscode/sync-api-service';
 
 import RAL from './ral';
 import PythonInstallation from './pythonInstallation';
-import { DebugAdapter } from './debugAdapter';
+import { DebugAdapter, DebugProperties } from './debugAdapter';
 import { Terminals } from './terminals';
 
 function isCossOriginIsolated(): boolean {
@@ -44,7 +44,7 @@ export class DebugConfigurationProvider implements DebugConfigurationProvider {
 	 * Massage a debug configuration just before a debug session is being launched,
 	 * e.g. add all missing attributes to the debug configuration.
 	 */
-	async resolveDebugConfiguration(folder: WorkspaceFolder | undefined, config: DebugConfiguration, token?: CancellationToken): Promise<DebugConfiguration | undefined> {
+	async resolveDebugConfiguration(folder: WorkspaceFolder | undefined, config: DebugConfiguration & DebugProperties, token?: CancellationToken): Promise<DebugConfiguration | undefined> {
 		if (!isCossOriginIsolated()) {
 			return undefined;
 		}
@@ -56,7 +56,8 @@ export class DebugConfigurationProvider implements DebugConfigurationProvider {
 				config.name = 'Launch';
 				config.request = 'launch';
 				config.program = '${file}';
-				config.stopOnEntry = false;
+				config.stopOnEntry = true;
+				config.console = 'internalConsole';
 			}
 		}
 
@@ -77,7 +78,7 @@ export class DebugConfigurationProvider implements DebugConfigurationProvider {
 			config.program = targetResource.toString();
 		}
 
-		if (!config.ptyInfo && targetResource) {
+		if (config.console === 'integratedTerminal' && targetResource !== undefined) {
 			const pty = Terminals.getExecutionTerminal(targetResource, true);
 			pty.setMode(TerminalMode.idle); // DebugAdapter will switch to in use
 			config.ptyInfo = { uuid: pty.id };
@@ -137,15 +138,13 @@ export function activate(context: ExtensionContext) {
 			}
 			if (targetResource) {
 				await preloadPromise;
-				const pty = Terminals.getExecutionTerminal(targetResource, true);
-				pty.setMode(TerminalMode.idle); // DebugAdapter will switch to in use
 				return debug.startDebugging(undefined, {
 					type: 'python-web-wasm',
 					name: 'Debug Python in WASM',
 					request: 'launch',
 					stopOnEntry: true,
 					program: targetResource.toString(true),
-					ptyInfo: { uuid: pty.id }
+					console: 'internalConsole',
 				});
 			}
 			return false;
