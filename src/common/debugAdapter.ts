@@ -6,12 +6,13 @@
 
 import * as vscode from 'vscode';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { ServicePseudoTerminal, RAL as SyncRal, TerminalMode } from '@vscode/sync-api-service';
+import { ServicePseudoTerminal, RAL as SyncRal, TerminalMode, CharacterDeviceDriver } from '@vscode/sync-api-service';
 import RAL from './ral';
 import { Response } from './debugMessages';
 import { Launcher, PathMapping } from './launcher';
 import { Terminals } from './terminals';
 import { DebugCharacterDeviceDriver } from './debugCharacterDeviceDriver';
+import { DebugConsole } from './debugConsole';
 
 const StackFrameRegex = /^[>,\s]+(.+)\((\d+)\)(.*)\(\)/;
 const TracebackFrameRegex = /^\s+File "(.+)", line (\d+)/;
@@ -31,9 +32,17 @@ const UncaughtExceptionOutput = 'Uncaught exception. Entering post mortem debugg
 const ProgramFinishedOutput = 'The program finished and will be restarted';
 const SyntaxErrorOutput = /^SyntaxError:\s+/gm;
 
+export type DebugProperties = {
+	program: string;
+	args?: string[];
+	stopOnEntry?: boolean;
+	console?: 'internalConsole' | 'integratedTerminal';
+};
+
 export class DebugAdapter implements vscode.DebugAdapter {
 	private _launcher: Launcher | undefined;
 	private _debuggerDriver: DebugCharacterDeviceDriver | undefined;
+	private _debugConsole: DebugConsole | undefined;
 	private _terminal: ServicePseudoTerminal | undefined;
 	private _cwd: string | undefined;
 	private _sequence = 0;
@@ -87,9 +96,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		// Hack, readlinecallback needs to be reset. We likely have an outstanding promise
 		if (!this._disposed) {
 			this._disposed = true;
-			this._terminal?.handleInput!('\r');
-			(this._terminal as any).lines.clear();
-			this._terminal?.setMode(TerminalMode.idle);
 		}
 	}
 
@@ -686,24 +692,56 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		if (this._launcher !== undefined) {
 			return;
 		}
-		const args: DebugProtocol.LaunchRequestArguments & { program: string, ptyInfo: { uuid: string } } = message.arguments as any;
-		const uuid = args.ptyInfo.uuid;
-		this._terminal = Terminals.getTerminalInUse(uuid)!;
+		const args: DebugProtocol.LaunchRequestArguments & { program: string, ptyInfo?: { uuid: string } } = message.arguments as any;
+		const uuid = args.ptyInfo?.uuid;
+		const stdio: CharacterDeviceDriver = (() => {
+			if (uuid !== undefined) {
+				this._terminal = Terminals.getTerminalInUse(uuid)!;
+				return this._terminal;
+			} else {
+				this._debugConsole = new DebugConsole();
+				this._debugConsole.onStdout((value) => {
+					this._sendEvent<DebugProtocol.OutputEvent>({
+						type: 'event',
+						seq: this._sequence++,
+						event: 'output',
+						body: {
+							category: 'stdout',
+							output: value
+						}
+					});
+				});
+				this._debugConsole.onStderr((value) => {
+					this._sendEvent<DebugProtocol.OutputEvent>({
+						type: 'event',
+						seq: this._sequence++,
+						event: 'output',
+						body: {
+							category: 'stderr',
+							output: value
+						}
+					});
+				});
+				return this._debugConsole;
+			}
+		})();
 		this._launcher = RAL().launcher.create();
 		this._launcher.onPathMapping(this._handlePathMappings.bind(this));
 		this._launcher.onExit().then((_rval) => {
-			this._launcher = undefined;
-			this._sendTerminated();
 		}).catch(e => {
 			console.error(e);
+		}).finally(() => {
 			this._launcher = undefined;
 			this._sendTerminated();
+			if (this._terminal !== undefined) {
+				Terminals.releaseExecutionTerminal(this._terminal, false);
+			}
 		});
 		this._debuggerDriver = new DebugCharacterDeviceDriver();
 
 		// Wait for debuggee to emit first bit of output before continuing. First bit of output may be an exception that the program crashed
 		const launchOutput = await this._waitForPdbOutput('command', () => {
-			return this._launcher!.debug(this.context, args.program.replace(/\\/g, '/'), this._terminal!, this._debuggerDriver!, PdbTerminator);
+			return this._launcher!.debug(this.context, args.program.replace(/\\/g, '/'), stdio, this._debuggerDriver!, PdbTerminator);
 		});
 
 		// Setup an alias for printing exc info
@@ -716,9 +754,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._sendToDebugConsole(`PDB debugger connected.\r\n`);
 
 		// PDB should have stopped at the entry point and printed out the first line. It may have also just crashed.
-
-		// Start listening for user input
-		this._terminal.setMode(TerminalMode.inUse);
 
 		// Send back the response
 		this._sendResponse<DebugProtocol.LaunchResponse>({
@@ -905,7 +940,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		if (data.indexOf('\n') >= 0 && data.indexOf('\r') < 0) {
 			data = data.replace(/\n/g, '\r\n');
 		}
-		this._terminal?.writeString(data);
+		// this._debugConsole?.writeString(data);
 	}
 
 	private _sendToDebugConsole(data: string) {

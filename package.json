@@ -34,7 +34,7 @@
 		"@types/path-browserify": "^1.0.0",
 		"@vscode/debugprotocol": "1.58.0",
 		"@vscode/sync-api-service": "0.8.1",
-		"@vscode/wasm-wasi": "0.8.1",
+		"@vscode/wasm-wasi": "0.8.2",
 		"vscode-uri": "^3.0.6",
 		"path-browserify": "^1.0.1",
 		"uuid": "9.0.0"
@@ -99,6 +99,19 @@
 								"description": "Whether or not to stop the debugger on the first line of the first file",
 								"default": true,
 								"type": "boolean"
+							},
+							"console": {
+								"default": "internalConsole",
+								"description": "Where to launch the debug target",
+								"type": "string",
+								"enum": [
+									"internalConsole",
+									"integratedTerminal"
+								],
+								"enumDescriptions": [
+									"VS Code's Debug Console (which doesn't support to read from stdin)",
+									"VSCode's integrated terminal"
+								]
 							}
 						}
 					}
