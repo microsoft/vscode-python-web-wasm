@@ -22,10 +22,6 @@ The extension's intension is to serve as an experimentation environment to help 
 - no support for native Python modules.
 - no thread support. As a consequence there is no async support either.
 
-### VS Code limitations
-
-- no debug support. You can only run a Python file.
-
 ## Pre-requisites
 
 The extension depends on the [Github Repositories](https://marketplace.visualstudio.com/items?itemName=GitHub.remotehub) extensions. It also requires you to authenticate with GitHub.
@@ -49,6 +45,10 @@ You can setup your own Python environment, included source wheel Python packages
 }
 ```
 
+## History
+
+- 0.7.0: added basic debugging support
+- 0.5.0: initial version
 
 ## Versioning
 
