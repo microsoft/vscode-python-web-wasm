@@ -450,7 +450,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			? scrapedDir[1].split(',')
 				.map(s => s.trim())
 				.map(s => s.slice(1, s.length-1))
-				.filter(e => !e.startsWith('__') || e === '__file__')
+				.filter(e => (!e.startsWith('__') || e === '__file__') && e.length > 0)
 			: [];
 
 		// For each entry we need to make a request to pdb to get its value. This might take a while
