@@ -7,6 +7,7 @@ import RAL from './ral';
 
 import { Uri, workspace } from 'vscode';
 import RemoteRepositories from './remoteRepositories';
+import { Tracer } from './trace';
 
 namespace PythonInstallation  {
 
@@ -41,19 +42,23 @@ namespace PythonInstallation  {
 	async function triggerPreload(): Promise<void> {
 		const {repository, root} = await getConfig();
 		try {
+			Tracer.append(`Loading workspace content.`);
 			const remoteHubApi = await RemoteRepositories.getApi();
 			if (remoteHubApi.loadWorkspaceContents !== undefined) {
 				await remoteHubApi.loadWorkspaceContents(repository);
+				Tracer.append(`Workspace content loaded successful.`);
 				const binaryLocation =  root !== undefined ? Uri.joinPath(repository, root, 'python.wasm') : Uri.joinPath(repository, 'python.wasm');
 				wasmBytes = workspace.fs.readFile(binaryLocation).then(bytes => {
 					const buffer = new SharedArrayBuffer(bytes.byteLength);
 					new Uint8Array(buffer).set(bytes);
+					Tracer.append(`python.wasm cached successful.`);
 					return buffer;
 				}, (error) => {
 					console.log(error);
 				});
 			}
 		} catch (error) {
+			Tracer.append(`Loading workspace content failed: ${error instanceof Error ? error.toString() : 'Unknown reason'}`);
 			console.log(error);
 		}
 	}
