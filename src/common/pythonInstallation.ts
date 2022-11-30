@@ -42,7 +42,6 @@ namespace PythonInstallation  {
 	async function triggerPreload(): Promise<void> {
 		const {repository, root} = await getConfig();
 		try {
-			Tracer.append(`Loading workspace content.`);
 			const remoteHubApi = await RemoteRepositories.getApi();
 			if (remoteHubApi.loadWorkspaceContents !== undefined) {
 				await remoteHubApi.loadWorkspaceContents(repository);

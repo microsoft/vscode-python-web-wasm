@@ -167,17 +167,6 @@
 					"scope": "machine-overridable",
 					"type": "string",
 					"description": "A URL for a GitHub that hosts the python.wasm file together with the default Python libraries."
-				},
-				"python.wasm.trace": {
-					"scope": "window",
-					"type": "string",
-					"enum": [
-						"off",
-						"messages",
-						"verbose"
-					],
-					"default": "off",
-					"description": "Enables tracing."
 				}
 			}
 		}
