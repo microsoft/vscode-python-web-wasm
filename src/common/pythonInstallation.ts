@@ -45,19 +45,19 @@ namespace PythonInstallation  {
 			const remoteHubApi = await RemoteRepositories.getApi();
 			if (remoteHubApi.loadWorkspaceContents !== undefined) {
 				await remoteHubApi.loadWorkspaceContents(repository);
-				Tracer.append(`Workspace content loaded successful.`);
+				Tracer.append(`Successfully loaded workspace content for repository ${repository.toString()}`);
 				const binaryLocation =  root !== undefined ? Uri.joinPath(repository, root, 'python.wasm') : Uri.joinPath(repository, 'python.wasm');
 				wasmBytes = workspace.fs.readFile(binaryLocation).then(bytes => {
 					const buffer = new SharedArrayBuffer(bytes.byteLength);
 					new Uint8Array(buffer).set(bytes);
-					Tracer.append(`python.wasm cached successful.`);
+					Tracer.append(`Successfully cached WASM file ${binaryLocation.toString()}`);
 					return buffer;
 				}, (error) => {
 					console.log(error);
 				});
 			}
 		} catch (error) {
-			Tracer.append(`Loading workspace content failed: ${error instanceof Error ? error.toString() : 'Unknown reason'}`);
+			Tracer.append(`Loading workspace content for repository ${repository.toString()} failed: ${error instanceof Error ? error.toString() : 'Unknown reason'}`);
 			console.log(error);
 		}
 	}
