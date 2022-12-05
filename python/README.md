@@ -1,2 +1,2 @@
-# python-3.11.0rc
-Python 3.11rc0 binaries
+# python-3.11.0
+Python 3.11.0 binaries
