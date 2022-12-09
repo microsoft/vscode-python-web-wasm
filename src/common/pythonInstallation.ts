@@ -5,7 +5,7 @@
 
 import RAL from './ral';
 
-import { Uri, workspace } from 'vscode';
+import { RelativePattern, Uri, workspace } from 'vscode';
 import RemoteRepositories from './remoteRepositories';
 import { Tracer } from './trace';
 
@@ -45,6 +45,12 @@ namespace PythonInstallation  {
 			const remoteHubApi = await RemoteRepositories.getApi();
 			if (remoteHubApi.loadWorkspaceContents !== undefined) {
 				await remoteHubApi.loadWorkspaceContents(repository);
+				const fsWatcher = workspace.createFileSystemWatcher(new RelativePattern(repository, '*'));
+				fsWatcher.onDidChange(async (uri) => {
+					if (uri.toString() === repository.toString()) {
+						await remoteHubApi.loadWorkspaceContents?.(uri);
+					}
+				});
 				Tracer.append(`Successfully loaded workspace content for repository ${repository.toString()}`);
 				const binaryLocation =  root !== undefined ? Uri.joinPath(repository, root, 'python.wasm') : Uri.joinPath(repository, 'python.wasm');
 				wasmBytes = workspace.fs.readFile(binaryLocation).then(bytes => {
