@@ -5,7 +5,7 @@
 
 import RAL from './ral';
 
-import { RelativePattern, Uri, workspace } from 'vscode';
+import { Disposable, RelativePattern, Uri, workspace } from 'vscode';
 import RemoteRepositories from './remoteRepositories';
 import { Tracer } from './trace';
 
@@ -38,19 +38,24 @@ namespace PythonInstallation  {
 	}
 
 	let configPromise: Promise<{ repository: Uri; root: string | undefined}> | undefined;
+	let repositoryWatcher: Disposable | undefined;
 
 	async function triggerPreload(): Promise<void> {
 		const {repository, root} = await getConfig();
+		if (repositoryWatcher === undefined) {
+			const fsWatcher = workspace.createFileSystemWatcher(new RelativePattern(repository, '*'));
+			repositoryWatcher =  fsWatcher.onDidChange(async (uri) => {
+				if (uri.toString() === repository.toString()) {
+					Tracer.append(`Repository ${repository.toString()} changed. Pre-load it again.`);
+					_preload = undefined;
+					preload().catch(console.error);
+				}
+			});
+		}
 		try {
 			const remoteHubApi = await RemoteRepositories.getApi();
 			if (remoteHubApi.loadWorkspaceContents !== undefined) {
 				await remoteHubApi.loadWorkspaceContents(repository);
-				const fsWatcher = workspace.createFileSystemWatcher(new RelativePattern(repository, '*'));
-				fsWatcher.onDidChange(async (uri) => {
-					if (uri.toString() === repository.toString()) {
-						await remoteHubApi.loadWorkspaceContents?.(uri);
-					}
-				});
 				Tracer.append(`Successfully loaded workspace content for repository ${repository.toString()}`);
 				const binaryLocation =  root !== undefined ? Uri.joinPath(repository, root, 'python.wasm') : Uri.joinPath(repository, 'python.wasm');
 				wasmBytes = workspace.fs.readFile(binaryLocation).then(bytes => {
@@ -59,12 +64,12 @@ namespace PythonInstallation  {
 					Tracer.append(`Successfully cached WASM file ${binaryLocation.toString()}`);
 					return buffer;
 				}, (error) => {
-					console.log(error);
+					console.error(error);
 				});
 			}
 		} catch (error) {
 			Tracer.append(`Loading workspace content for repository ${repository.toString()} failed: ${error instanceof Error ? error.toString() : 'Unknown reason'}`);
-			console.log(error);
+			console.error(error);
 		}
 	}
 
