@@ -45,7 +45,7 @@ def run(dbg, tgt):
 
 debugger = pdb.Pdb(stdin=opendbgin(), stdout=opendbgout())
 debugger.prompt = '$terminator'
-target = pdb.ScriptTarget('$program')
+target = pdb.ScriptTarget('$program') if hasattr(pdb, 'ScriptTarget') else pdb._ScriptTarget('$program')
 run(debugger, target)`;
 
 	export function create(program: string, terminator: string): string {
