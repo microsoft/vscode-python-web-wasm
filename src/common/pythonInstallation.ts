@@ -14,8 +14,6 @@ namespace PythonInstallation  {
 	const defaultPythonRepository = 'https://github.com/microsoft/vscode-python-web-wasm' as const;
 	const defaultPythonRoot = 'python' as const;
 
-	let wasmBytes: Thenable<SharedArrayBuffer> | undefined;
-
 	async function resolveConfiguration(): Promise<{ repository: Uri; root: string | undefined }> {
 		const path = RAL().path;
 		let pythonRepository = workspace.getConfiguration('python.wasm').get<string | undefined | null>('runtime', undefined);
@@ -37,14 +35,32 @@ namespace PythonInstallation  {
 		return { repository: vfs, root: pythonRoot};
 	}
 
-	let configPromise: Promise<{ repository: Uri; root: string | undefined}> | undefined;
-	let repositoryWatcher: Disposable | undefined;
+	let _configPromise: Promise<{ repository: Uri; root: string | undefined}> | undefined;
+	export async function getConfig(): Promise<{ repository: Uri; root: string | undefined}> {
+		if (_configPromise === undefined) {
+			_configPromise = resolveConfiguration();
+		}
+		return _configPromise;
+	}
+	workspace.onDidChangeConfiguration((event) => {
+		if (event.affectsConfiguration('python.wasm')) {
+			_configPromise = undefined;
+			if (_repositoryWatcher !== undefined) {
+				_repositoryWatcher.dispose();
+				_repositoryWatcher = undefined;
+			}
+			_preload = undefined;
+			preload().catch(console.error);
+		}
+	});
 
+
+	let _repositoryWatcher: Disposable | undefined;
 	async function triggerPreload(): Promise<void> {
 		const {repository, root} = await getConfig();
-		if (repositoryWatcher === undefined) {
+		if (_repositoryWatcher === undefined) {
 			const fsWatcher = workspace.createFileSystemWatcher(new RelativePattern(repository, '*'));
-			repositoryWatcher =  fsWatcher.onDidChange(async (uri) => {
+			_repositoryWatcher =  fsWatcher.onDidChange(async (uri) => {
 				if (uri.toString() === repository.toString()) {
 					Tracer.append(`Repository ${repository.toString()} changed. Pre-load it again.`);
 					_preload = undefined;
@@ -74,7 +90,6 @@ namespace PythonInstallation  {
 	}
 
 	let _preload: Promise<void> | undefined;
-
 	export function preload(): Promise<void> {
 		if (_preload === undefined) {
 			_preload = triggerPreload();
@@ -82,13 +97,7 @@ namespace PythonInstallation  {
 		return _preload;
 	}
 
-	export async function getConfig(): Promise<{ repository: Uri; root: string | undefined}> {
-		if (configPromise === undefined) {
-			configPromise = resolveConfiguration();
-		}
-		return configPromise;
-	}
-
+	let wasmBytes: Thenable<SharedArrayBuffer> | undefined;
 	export async function sharedWasmBytes(): Promise<SharedArrayBuffer> {
 		if (wasmBytes === undefined) {
 			await _preload;
