@@ -4,17 +4,6 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "watch",
-			"dependsOn": [
-				"npm: watch:tsc",
-				"npm: watch:esbuild"
-			],
-			"problemMatcher": [],
-			"runOptions": {
-				"runOn": "folderOpen"
-			}
-		},
-		{
 			"type": "npm",
 			"script": "watch:tsc",
 			"isBackground": true,
