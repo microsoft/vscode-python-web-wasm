@@ -56,6 +56,7 @@ namespace PythonInstallation  {
 
 
 	let _repositoryWatcher: Disposable | undefined;
+	let preloadToken: number = 0;
 	async function triggerPreload(): Promise<void> {
 		const {repository, root} = await getConfig();
 		if (_repositoryWatcher === undefined) {
@@ -69,19 +70,29 @@ namespace PythonInstallation  {
 			});
 		}
 		try {
+			const token = ++preloadToken;
 			const remoteHubApi = await RemoteRepositories.getApi();
 			if (remoteHubApi.loadWorkspaceContents !== undefined) {
 				await remoteHubApi.loadWorkspaceContents(repository);
 				Tracer.append(`Successfully loaded workspace content for repository ${repository.toString()}`);
 				const binaryLocation =  root !== undefined ? Uri.joinPath(repository, root, 'python.wasm') : Uri.joinPath(repository, 'python.wasm');
-				wasmBytes = workspace.fs.readFile(binaryLocation).then(bytes => {
-					const buffer = new SharedArrayBuffer(bytes.byteLength);
-					new Uint8Array(buffer).set(bytes);
-					Tracer.append(`Successfully cached WASM file ${binaryLocation.toString()}`);
-					return buffer;
-				}, (error) => {
+				try {
+					const bytes = await workspace.fs.readFile(binaryLocation);
+					// We didn't start another preload.
+					if (token === preloadToken) {
+						const buffer = new SharedArrayBuffer(bytes.byteLength);
+						new Uint8Array(buffer).set(bytes);
+						Tracer.append(`Successfully cached WASM file ${binaryLocation.toString()}`);
+						wasmBytes = buffer;
+
+					} else {
+						wasmBytes = undefined;
+					}
+				} catch (error) {
+					wasmBytes = undefined;
+					Tracer.append(`Caching WASM file ${binaryLocation.toString()} failed`);
 					console.error(error);
-				});
+				}
 			}
 		} catch (error) {
 			Tracer.append(`Loading workspace content for repository ${repository.toString()} failed: ${error instanceof Error ? error.toString() : 'Unknown reason'}`);
@@ -97,7 +108,7 @@ namespace PythonInstallation  {
 		return _preload;
 	}
 
-	let wasmBytes: Thenable<SharedArrayBuffer> | undefined;
+	let wasmBytes: SharedArrayBuffer | undefined;
 	export async function sharedWasmBytes(): Promise<SharedArrayBuffer> {
 		if (wasmBytes === undefined) {
 			await _preload;

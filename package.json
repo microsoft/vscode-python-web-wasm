@@ -4,7 +4,7 @@
 	"publisher": "ms-vscode",
 	"displayName": "Experimental - Python for the Web",
 	"description": "Experimental support for Python in the Web using WebAssemblies",
-	"version": "0.9.0",
+	"version": "0.11.0",
 	"author": "Microsoft Corporation",
 	"license": "MIT",
 	"repository": {
