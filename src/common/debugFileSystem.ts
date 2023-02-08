@@ -7,30 +7,27 @@ import { URI } from 'vscode-uri';
 
 import {
 	ApiClient, BaseFileDescriptor, BigInts, DeviceIds, Errno, fd, fdflags, fdstat, FileDescriptor, filestat, FileSystemDeviceDriver, Filetype, filetype,
-	lookupflags, NoSysDeviceDriver, oflags, RAL, Rights, rights, size, WasiError, Whence
+	lookupflags, NoSysDeviceDriver, oflags, RAL, Rights, rights, size, WasiError, Whence, VSCodeFS, ApiShape
 } from '@vscode/wasm-wasi';
 
 class DebugFileDescriptor extends BaseFileDescriptor {
 
-	public readonly path: string;
-
-	constructor(deviceId: bigint, fd: fd, filetype: filetype, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint, path: string) {
-		super(deviceId, fd, Filetype.character_device, rights_base, rights_inheriting, fdflags, inode);
-		this.path = path;
+	constructor(deviceId: bigint, fd: fd, filetype: filetype, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint) {
+		super(deviceId, fd, filetype, rights_base, rights_inheriting, fdflags, inode);
 	}
 }
 
 class DebugCharacterDeviceFD extends DebugFileDescriptor {
 
-	constructor(deviceId: bigint, fd: fd, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint, path: string) {
-		super(deviceId, fd, Filetype.character_device, rights_base, rights_inheriting, fdflags, inode, path);
+	constructor(deviceId: bigint, fd: fd, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint) {
+		super(deviceId, fd, Filetype.character_device, rights_base, rights_inheriting, fdflags, inode);
 	}
 }
 
 class DebugDirectoryFD extends DebugFileDescriptor {
 
-	constructor(deviceId: bigint, fd: fd, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint, path: string) {
-		super(deviceId, fd, Filetype.directory, rights_base, rights_inheriting, fdflags, inode, path);
+	constructor(deviceId: bigint, fd: fd, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint) {
+		super(deviceId, fd, Filetype.directory, rights_base, rights_inheriting, fdflags, inode);
 	}
 }
 
@@ -38,53 +35,69 @@ class DebugFileFD extends DebugFileDescriptor {
 
 	public cursor: number;
 
-	constructor(deviceId: bigint, fd: fd, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint, path: string) {
-		super(deviceId, fd, Filetype.regular_file, rights_base, rights_inheriting, fdflags, inode, path);
+	constructor(deviceId: bigint, fd: fd, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint) {
+		super(deviceId, fd, Filetype.regular_file, rights_base, rights_inheriting, fdflags, inode);
 		this.cursor = 0;
 	}
 }
 
-export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileDescriptorId: { next(): number }, posix_path: { readonly join: (...paths: string[]) => string, readonly sep: string }, uri: URI, mainContent: string): FileSystemDeviceDriver {
+export function create(apiClient: ApiShape, textEncoder: RAL.TextEncoder, fileDescriptorId: { next(): number }, posix_path: { readonly join: (...paths: string[]) => string, readonly sep: string }, uri: URI, mainContent: string): FileSystemDeviceDriver {
 
 	const mainContentBytes = textEncoder.encode(mainContent);
-
 	const deviceId = DeviceIds.next();
-	const fileDescriptorParams: Map<string, [filetype, rights /* base */, rights /* inheriting */, fdflags, bigint /* inode */ ]> = new Map([
-		['/', [Filetype.directory, Rights.DirectoryBase, Rights.DirectoryInheriting, 0,  0n]],
-		['/main.py', [Filetype.regular_file, Rights.FileBase, Rights.FileInheriting, 0,  1n]],
-		['/input', [Filetype.character_device, Rights.CharacterDeviceBase, Rights.CharacterDeviceInheriting, 0,  2n]],
-		['/output', [Filetype.character_device, Rights.CharacterDeviceBase, Rights.CharacterDeviceInheriting, 0,  3n]],
-	]);
 	const preOpenDirectories: string[] = ['/$debug'];
 
-	function createCharacterDeviceFD(fd: fd, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint, path: string): DebugCharacterDeviceFD {
-		return new DebugCharacterDeviceFD(deviceId, fd, rights_base, rights_inheriting, fdflags, inode, path);
-	}
-
-	function createDirectoryFD(fd: fd, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint, path: string): DebugDirectoryFD {
-		return new DebugDirectoryFD(deviceId, fd, rights_base, rights_inheriting, fdflags, inode, path);
-	}
-
-	function createFileFD(fd: fd, rights_base: rights, rights_inheriting: rights, fdflags: fdflags, inode: bigint, path: string): DebugFileFD {
-		return new DebugFileFD(deviceId, fd, rights_base, rights_inheriting, fdflags, inode, path);
-	}
-
-	function createFileDescriptor(fd: fd, fs_rights_base: rights, fs_rights_inheriting: rights, filePath: string): BaseFileDescriptor {
-		const params = fileDescriptorParams.get(filePath);
-		if (params === undefined) {
-			throw new WasiError(Errno.noent);
+	let _root: DebugDirectoryFD | undefined;
+	function rootFd(fd?: fd): DebugDirectoryFD {
+		if (_root === undefined) {
+			if (fd === undefined) {
+				throw new WasiError(Errno.inval);
+			}
+			_root = new DebugDirectoryFD(deviceId, fd, VSCodeFS.DirectoryRights.base, VSCodeFS.DirectoryRights.inheriting, 0, 0n);
 		}
-		switch (params[0]) {
-			case Filetype.character_device:
-				return createCharacterDeviceFD(fd, params[1] | fs_rights_base, params[2] | fs_rights_inheriting, params[3], params[4], filePath);
-			case Filetype.directory:
-				return createDirectoryFD(fd, params[1] | fs_rights_base, params[2] | fs_rights_inheriting, params[3], params[4], filePath);
-			case Filetype.regular_file:
-				return createFileFD(fd, params[1] | fs_rights_base, params[2] | fs_rights_inheriting, params[3], params[4], filePath);
-		}
-		throw new WasiError(Errno.noent);
+		return _root;
 	}
 
+	let _main: DebugFileFD | undefined;
+	function mainFd(): DebugFileFD {
+		if (_main === undefined) {
+			_main = new DebugFileFD(deviceId, fileDescriptorId.next(), VSCodeFS.FileRights.base, VSCodeFS.FileRights.inheriting, 0, 1n);
+		}
+		return _main;
+	}
+
+	let _input: DebugCharacterDeviceFD | undefined;
+	const InputRights = Rights.fd_read | Rights.fd_filestat_get| Rights.poll_fd_readwrite;
+	function inputFd(): DebugCharacterDeviceFD {
+		if (_input === undefined) {
+			_input = new DebugCharacterDeviceFD(deviceId, fileDescriptorId.next(), InputRights, Rights.None, 0, 2n);
+		}
+		return _input;
+	}
+
+	let _output: DebugCharacterDeviceFD | undefined;
+	const OutputRights = Rights.fd_write | Rights.fd_filestat_get | Rights.poll_fd_readwrite;
+	function outputFd(): DebugCharacterDeviceFD {
+		if (_output === undefined) {
+			_output = new DebugCharacterDeviceFD(deviceId, fileDescriptorId.next(), OutputRights, Rights.None, 0, 3n);
+		}
+		return _output;
+	}
+
+	function getFileDescriptor(path: string): DebugFileDescriptor {
+		switch (path) {
+			case '/':
+				return rootFd();
+			case '/main.py':
+				return mainFd();
+			case '/input':
+				return inputFd();
+			case '/output':
+				return outputFd();
+			default:
+				throw new WasiError(Errno.noent);
+		}
+	}
 	function assertDebugFileDescriptor(fileDescriptor: FileDescriptor): asserts fileDescriptor is DebugFileDescriptor {
 		if (!(fileDescriptor instanceof DebugFileDescriptor)) {
 			throw new WasiError(Errno.badf);
@@ -121,14 +134,16 @@ export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileD
 			}
 			return [
 				next,
-				createFileDescriptor(fd, 0n, 0n, '/')
+				rootFd(fd)
 			];
 		},
 		path_open(parentDescriptor: FileDescriptor, _dirflags: lookupflags, path: string, _oflags: oflags, fs_rights_base: rights, fs_rights_inheriting: rights, fdflags: fdflags): FileDescriptor {
 			assertDirectory(parentDescriptor);
+			if (parentDescriptor !== rootFd()) {
+				throw new WasiError(Errno.notdir);
+			}
 
-			const filePath = posix_path.join(parentDescriptor.path, path);
-			return createFileDescriptor(fileDescriptorId.next(), fs_rights_base, fs_rights_inheriting, filePath);
+			return getFileDescriptor(posix_path.join('/', path));
 		},
 		fd_fdstat_get(fileDescriptor: FileDescriptor, result: fdstat): void {
 			result.fs_filetype = fileDescriptor.fileType;
@@ -183,10 +198,10 @@ export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileD
 			let offset: number | undefined;
 			let fileFD: DebugFileFD | undefined;
 			assertDebugFileDescriptor(fileDescriptor);
-			if (fileDescriptor.path === '/input') {
+			if (fileDescriptor === inputFd()) {
 				content = apiClient.byteSource.read(uri, maxBytesToRead);
 				offset = 0;
-			} else if (fileDescriptor.path === '/main.py') {
+			} else if (fileDescriptor === mainFd()) {
 				assertFile(fileDescriptor);
 				fileFD = fileDescriptor;
 				content = textEncoder.encode(mainContent);
@@ -213,7 +228,7 @@ export function create(apiClient: ApiClient, textEncoder: RAL.TextEncoder, fileD
 		fd_write(fileDescriptor: FileDescriptor, buffers: Uint8Array[]): size {
 			assertCharacterDevice(fileDescriptor);
 
-			if (fileDescriptor.path !== '/output') {
+			if (fileDescriptor !== outputFd()) {
 				throw new WasiError(Errno.badf);
 			}
 			let buffer: Uint8Array;
