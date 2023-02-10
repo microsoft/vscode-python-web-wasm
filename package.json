@@ -15,15 +15,12 @@
 		"url": "https://github.com/microsoft/vscode-python-web-wasm/issues"
 	},
 	"engines": {
-		"vscode": "^1.71.0"
+		"vscode": "^1.75.0"
 	},
 	"main": "./dist/desktop/extension.js",
 	"browser": "./dist/web/extension.js",
 	"activationEvents": [
 		"onLanguage:python",
-		"onCommand:vscode-python-web-wasm.debug.runEditorContents",
-		"onCommand:vscode-python-web-wasm.repl.start",
-		"onCommand:vscode-python-web-wasm.debug.debugEditorContents",
 		"onDebugResolve:python-web-wasm",
 		"onDebug"
 	],
@@ -32,37 +29,37 @@
 	],
 	"dependencies": {
 		"@types/path-browserify": "^1.0.0",
-		"@vscode/debugprotocol": "1.58.0",
-		"@vscode/sync-api-service": "0.8.1",
-		"@vscode/wasm-wasi": "0.8.2",
-		"vscode-uri": "^3.0.6",
+		"@vscode/debugprotocol": "^1.59.0",
+		"@vscode/sync-api-service": "0.9.0",
+		"@vscode/wasm-wasi": "0.9.0",
+		"vscode-uri": "^3.0.7",
 		"path-browserify": "^1.0.1",
-		"uuid": "9.0.0"
+		"uuid": "^9.0.0"
 	},
 	"devDependencies": {
 		"@types/node": "^16.11.57",
-		"@types/vscode": "1.71.0",
-		"@types/uuid": "8.3.4",
-		"@typescript-eslint/eslint-plugin": "^5.43.0",
-		"@typescript-eslint/parser": "^5.43.0",
-		"esbuild": "^0.15.14",
-		"eslint": "^8.27.0",
-		"typescript": "4.8.4",
-		"serve": "^14.1.1",
+		"@types/vscode": "1.75.0",
+		"@types/uuid": "^9.0.0",
+		"@typescript-eslint/eslint-plugin": "^5.51.0",
+		"@typescript-eslint/parser": "^5.51.0",
+		"esbuild": "^0.17.7",
+		"eslint": "^8.33.0",
+		"typescript": "4.9.5",
+		"serve": "^14.2.0",
 		"localtunnel": "^2.0.2",
 		"shelljs": "^0.8.5",
-		"rimraf": "^3.0.2",
-		"vsce": "^2.14.0"
+		"rimraf": "^4.1.2",
+		"@vscode/vsce": "^2.17.0"
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run all",
 		"symlink:vscode-wasm": "node ./bin/symlink",
 		"compile:tsc": "tsc -b ./tsconfig.json",
-		"esbuild": "node ./bin/esbuild.js",
+		"esbuild": "node ./bin/esbuild.mjs",
 		"watch:tsc": "tsc -b ./tsconfig.json -w",
-		"watch:esbuild": "node ./bin/esbuild.js --watch",
+		"watch:esbuild": "node ./bin/esbuild.mjs --watch",
 		"lint": "node ./node_modules/eslint/bin/eslint.js --ext ts src",
-		"clean": "node ./node_modules/rimraf/bin.js out && node ./node_modules/rimraf/bin.js dist",
+		"clean": "rimraf out && rimraf dist",
 		"all": "npm run clean && npm run compile:tsc && npm run esbuild && npm run lint",
 		"serve": "serve --cors -l 5000 --ssl-cert $HOME/certs/localhost.pem --ssl-key $HOME/certs/localhost-key.pem -c ./configs/serve.json",
 		"serve-tunnel": "serve --cors -l 5000 -c ./configs/serve.json",

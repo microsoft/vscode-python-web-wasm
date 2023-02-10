@@ -23,5 +23,15 @@
 	"eslint.workingDirectories": [
 		"bin",
 		"."
+	],
+	"cSpell.words": [
+		"badf",
+		"fdflags",
+		"fdstat",
+		"filestat",
+		"inval",
+		"lookupflags",
+		"notdir",
+		"oflags"
 	]
 }

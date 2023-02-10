@@ -130,7 +130,7 @@ export abstract class WasmRunner {
 		const pythonInstallation = this.pythonRoot === undefined
 			? this.pythonRepository
 			: this.pythonRepository.with({ path: path.join(this.pythonRepository.path, this.pythonRoot) });
-		// Ususaly we would mount the python installation into /usr but that doesn't work due to a bug
+		// Usually we would mount the python installation into /usr but that doesn't work due to a bug
 		// in Python WASM right now. So we mount it into / but cheat a little with the path mapping to not
 		// have a mapping on root.
 		devices.push({ kind: 'fileSystem', uri: pythonInstallation, mountPoint: path.sep});
