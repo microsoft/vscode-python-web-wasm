@@ -22,9 +22,10 @@ namespace PythonInstallation  {
 			pythonRepository = defaultPythonRepository;
 			pythonRoot = defaultPythonRoot;
 		}
+
+		const pythonRepositoryUri = Uri.parse(pythonRepository);
 		if (Uri.parse(pythonRepository).authority !== 'github.com') {
-			pythonRepository = defaultPythonRepository;
-			pythonRoot = defaultPythonRoot;
+			return { repository: pythonRepositoryUri, root: '/'};
 		}
 		const extname = path.extname(pythonRepository);
 		if (extname === '.git') {
@@ -71,28 +72,33 @@ namespace PythonInstallation  {
 		}
 		try {
 			const token = ++preloadToken;
-			const remoteHubApi = await RemoteRepositories.getApi();
-			if (remoteHubApi.loadWorkspaceContents !== undefined) {
-				await remoteHubApi.loadWorkspaceContents(repository);
-				Tracer.append(`Successfully loaded workspace content for repository ${repository.toString()}`);
-				const binaryLocation =  root !== undefined ? Uri.joinPath(repository, root, 'python.wasm') : Uri.joinPath(repository, 'python.wasm');
-				try {
-					const bytes = await workspace.fs.readFile(binaryLocation);
-					// We didn't start another preload.
-					if (token === preloadToken) {
-						const buffer = new SharedArrayBuffer(bytes.byteLength);
-						new Uint8Array(buffer).set(bytes);
-						Tracer.append(`Successfully cached WASM file ${binaryLocation.toString()}`);
-						wasmBytes = buffer;
 
-					} else {
-						wasmBytes = undefined;
-					}
-				} catch (error) {
-					wasmBytes = undefined;
-					Tracer.append(`Caching WASM file ${binaryLocation.toString()} failed`);
-					console.error(error);
+			if (repository.authority !== 'github') {
+				Tracer.append(`Repository from ${repository.scheme} cannot be preloaded as it is a custom file system provider`);
+			} else {
+				const remoteHubApi = await RemoteRepositories.getApi();
+				if (remoteHubApi.loadWorkspaceContents !== undefined) {
+					await remoteHubApi.loadWorkspaceContents(repository);
 				}
+				Tracer.append(`Successfully loaded workspace content for repository ${repository.toString()}`);
+			}			
+			const binaryLocation =  root !== undefined ? Uri.joinPath(repository, root, 'python.wasm') : Uri.joinPath(repository, 'python.wasm');
+			try {
+				const bytes = await workspace.fs.readFile(binaryLocation);
+				// We didn't start another preload.
+				if (token === preloadToken) {
+					const buffer = new SharedArrayBuffer(bytes.byteLength);
+					new Uint8Array(buffer).set(bytes);
+					Tracer.append(`Successfully cached WASM file ${binaryLocation.toString()}`);
+					wasmBytes = buffer;
+
+				} else {
+					wasmBytes = undefined;
+				}
+			} catch (error) {
+				wasmBytes = undefined;
+				Tracer.append(`Caching WASM file ${binaryLocation.toString()} failed`);
+				console.error(error);
 			}
 		} catch (error) {
 			Tracer.append(`Loading workspace content for repository ${repository.toString()} failed: ${error instanceof Error ? error.toString() : 'Unknown reason'}`);
