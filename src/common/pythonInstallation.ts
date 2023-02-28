@@ -25,7 +25,7 @@ namespace PythonInstallation  {
 
 		// Consider third party file system providers
 		const pythonRepositoryUri = Uri.parse(pythonRepository);
-		if (!isGithubUri(Uri.parse(pythonRepository))) {
+		if (!isGithubUri(pythonRepositoryUri)) {
 			const binaryLocation =  Uri.joinPath(pythonRepositoryUri, 'python.wasm');
 			try {
 				// fs.stat throws if file doesn't exist
