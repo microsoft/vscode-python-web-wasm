@@ -23,10 +23,21 @@ namespace PythonInstallation  {
 			pythonRoot = defaultPythonRoot;
 		}
 
+		// Consider third party file system providers
 		const pythonRepositoryUri = Uri.parse(pythonRepository);
 		if (Uri.parse(pythonRepository).authority !== 'github.com') {
-			return { repository: pythonRepositoryUri, root: '/'};
+			const binaryLocation =  Uri.joinPath(pythonRepositoryUri, 'python.wasm');
+			try {
+				// fs.stat throws if file doesn't exist
+				await workspace.fs.stat(binaryLocation);
+				return { repository: pythonRepositoryUri, root: '/'};
+			} catch {
+				Tracer.append(`python.wasm not found in ${binaryLocation}. Falling back to default repository`);
+				pythonRepository = defaultPythonRepository;
+				pythonRoot = defaultPythonRoot;
+			}
 		}
+
 		const extname = path.extname(pythonRepository);
 		if (extname === '.git') {
 			pythonRepository = pythonRepository.substring(0, pythonRepository.length - extname.length);
