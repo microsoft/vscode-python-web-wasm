@@ -25,7 +25,7 @@ namespace PythonInstallation  {
 
 		// Consider third party file system providers
 		const pythonRepositoryUri = Uri.parse(pythonRepository);
-		if (Uri.parse(pythonRepository).authority !== 'github.com') {
+		if (!isGithubUri(Uri.parse(pythonRepository))) {
 			const binaryLocation =  Uri.joinPath(pythonRepositoryUri, 'python.wasm');
 			try {
 				// fs.stat throws if file doesn't exist
@@ -85,9 +85,7 @@ namespace PythonInstallation  {
 		try {
 			const token = ++preloadToken;
 
-			if (repository.authority !== 'github') {
-				Tracer.append(`Repository from ${repository.scheme} cannot be preloaded as it is a custom file system provider`);
-			} else {
+			if (isGithubUri(repository)) {
 				const remoteHubApi = await RemoteRepositories.getApi();
 				if (remoteHubApi.loadWorkspaceContents !== undefined) {
 					await remoteHubApi.loadWorkspaceContents(repository);
@@ -136,6 +134,10 @@ namespace PythonInstallation  {
 		}
 		return wasmBytes;
 	}
+}
+
+function isGithubUri(uri: Uri): boolean {
+	return uri.authority === 'github.com';
 }
 
 export default PythonInstallation;
