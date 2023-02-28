@@ -30,6 +30,7 @@ namespace PythonInstallation  {
 			try {
 				// fs.stat throws if file doesn't exist
 				await workspace.fs.stat(binaryLocation);
+				Tracer.append(`Using python library from ${pythonRepositoryUri}`);
 				return { repository: pythonRepositoryUri, root: '/'};
 			} catch {
 				Tracer.append(`python.wasm not found in ${binaryLocation}. Falling back to default repository`);
