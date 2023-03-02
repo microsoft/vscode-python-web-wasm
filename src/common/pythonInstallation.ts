@@ -24,19 +24,34 @@ namespace PythonInstallation  {
 		}
 
 		// Consider third party file system providers
-		const pythonRepositoryUri = Uri.parse(pythonRepository);
-		if (!isGithubUri(pythonRepositoryUri)) {
-			const binaryLocation =  Uri.joinPath(pythonRepositoryUri, 'python.wasm');
+		try {
+			let pythonRepositoryUri : Uri | undefined = undefined;
 			try {
-				// fs.stat throws if file doesn't exist
-				await workspace.fs.stat(binaryLocation);
-				Tracer.append(`Using python library from ${pythonRepositoryUri}`);
-				return { repository: pythonRepositoryUri, root: '/'};
-			} catch {
-				Tracer.append(`python.wasm not found in ${binaryLocation}. Falling back to default repository`);
-				pythonRepository = defaultPythonRepository;
-				pythonRoot = defaultPythonRoot;
+				// Uri.parse throws if the URI is invalid
+				pythonRepositoryUri = Uri.parse(pythonRepository);
 			}
+			catch (e) {
+				Tracer.append(`${pythonRepository} is not a valid URI`);
+				throw e;
+			}
+		
+			if (!isGithubUri(pythonRepositoryUri)) {
+				const binaryLocation =  Uri.joinPath(pythonRepositoryUri, 'python.wasm');
+				try {
+					// fs.stat throws if file doesn't exist
+					await workspace.fs.stat(binaryLocation);
+					Tracer.append(`Using python library from ${pythonRepositoryUri}`);
+					
+					return { repository: pythonRepositoryUri, root: '/'};
+				} catch(e) {
+					Tracer.append(`python.wasm not found in ${binaryLocation}`);
+					throw e;
+				}
+			}
+		} catch {
+			Tracer.append(`Falling back to default repository`);
+			pythonRepository = defaultPythonRepository;
+			pythonRoot = defaultPythonRoot;
 		}
 
 		const extname = path.extname(pythonRepository);
