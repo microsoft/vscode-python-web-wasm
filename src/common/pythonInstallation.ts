@@ -29,8 +29,7 @@ namespace PythonInstallation  {
 			try {
 				// Uri.parse throws if the URI is invalid
 				pythonRepositoryUri = Uri.parse(pythonRepository);
-			}
-			catch (e) {
+			} catch (e) {
 				Tracer.append(`${pythonRepository} is not a valid URI`);
 				throw e;
 			}
