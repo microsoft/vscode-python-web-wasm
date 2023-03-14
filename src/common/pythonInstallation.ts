@@ -148,10 +148,9 @@ namespace PythonInstallation  {
 		}
 		return wasmBytes;
 	}
-}
 
-function isGithubUri(uri: Uri): boolean {
-	return uri.authority === 'github.com';
+	function isGithubUri(uri: Uri): boolean {
+		return uri.authority === 'github.com';
+	}	
 }
-
 export default PythonInstallation;
