@@ -5,7 +5,7 @@
 
 import {
 	CancellationToken, commands, debug, DebugAdapterDescriptor, DebugAdapterInlineImplementation, DebugConfiguration,
-	DebugSession, ExtensionContext, Uri, window, WorkspaceFolder, workspace
+	DebugSession, ExtensionContext, Uri, window, WorkspaceFolder, workspace, notebooks
 } from 'vscode';
 
 import { TerminalMode } from '@vscode/sync-api-service';
@@ -14,6 +14,7 @@ import RAL from './ral';
 import PythonInstallation from './pythonInstallation';
 import { DebugAdapter, DebugProperties } from './debugAdapter';
 import { Terminals } from './terminals';
+import { executeHandler } from './notebooks';
 
 function isCossOriginIsolated(): boolean {
 	if (RAL().isCrossOriginIsolated) {
@@ -182,6 +183,8 @@ export function activate(context: ExtensionContext) {
 
 	const factory = new DebugAdapterDescriptorFactory(context, preloadPromise);
 	context.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
+
+	notebooks.createNotebookController('python-web-wasm', 'jupyter-notebook', 'Simple Python Controller', executeHandler);
 
 	return preloadPromise;
 }

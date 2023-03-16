@@ -7,7 +7,7 @@ import path from 'path-browserify';
 import { ClientConnection, Requests, MessageConnection as SyncMessageConnection } from '@vscode/sync-api-common/browser';
 import { ApiClientConnection, WASI } from '@vscode/wasm-wasi/browser';
 
-import { WasmRunner, MessageConnection } from '../common/pythonWasmWorker';
+import { WasmRunner } from '../common/pythonWasmWorker';
 import { MessageRequests, MessageNotifications } from '../common/messages';
 
 class WebWasmRunner extends WasmRunner {
@@ -24,6 +24,10 @@ class WebWasmRunner extends WasmRunner {
 			wasi_snapshot_preview1: wasi
 		});
 		wasi.initialize(instance);
+		if (typeof instance.exports.add_native_modules_to_inittab === 'function') {
+			const result = instance.exports.add_native_modules_to_inittab();
+			console.log(result);
+		}
 		(instance.exports._start as Function)();
 	}
 }
