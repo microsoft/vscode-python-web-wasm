@@ -17,49 +17,55 @@ namespace PythonInstallation  {
 	async function resolveConfiguration(): Promise<{ repository: Uri; root: string | undefined }> {
 		const path = RAL().path;
 		let pythonRepository = workspace.getConfiguration('python.wasm').get<string | undefined | null>('runtime', undefined);
+		let isDefault: boolean = false;
 		let pythonRoot = undefined;
 		if (pythonRepository === undefined || pythonRepository === null || pythonRepository.length === 0) {
 			pythonRepository = defaultPythonRepository;
 			pythonRoot = defaultPythonRoot;
+			isDefault = true;
 		}
 
-		// Consider third party file system providers
+		let pythonRepositoryUri: Uri | undefined = undefined;
 		try {
-			let pythonRepositoryUri : Uri | undefined = undefined;
-			try {
-				// Uri.parse throws if the URI is invalid
-				pythonRepositoryUri = Uri.parse(pythonRepository);
-			} catch (e) {
-				Tracer.append(`${pythonRepository} is not a valid URI`);
-				throw e;
-			}
-		
-			if (!isGithubUri(pythonRepositoryUri)) {
-				const binaryLocation =  Uri.joinPath(pythonRepositoryUri, 'python.wasm');
-				try {
-					// fs.stat throws if file doesn't exist
-					await workspace.fs.stat(binaryLocation);
-					Tracer.append(`Using python library from ${pythonRepositoryUri}`);
-					
-					return { repository: pythonRepositoryUri, root: '/'};
-				} catch(e) {
-					Tracer.append(`python.wasm not found in ${binaryLocation}`);
-					throw e;
-				}
-			}
-		} catch {
-			Tracer.append(`Falling back to default repository`);
-			pythonRepository = defaultPythonRepository;
-			pythonRoot = defaultPythonRoot;
+			pythonRepositoryUri = Uri.parse(pythonRepository);
+		} catch (error) {
+			Tracer.append(`${pythonRepository} is not a valid URI. Falling back to default Python repository ${defaultPythonRepository}`);
 		}
 
-		const extname = path.extname(pythonRepository);
-		if (extname === '.git') {
-			pythonRepository = pythonRepository.substring(0, pythonRepository.length - extname.length);
+		if (pythonRepositoryUri === undefined) {
+			pythonRepositoryUri = Uri.parse(defaultPythonRepository);
+			pythonRoot = defaultPythonRoot;
+			isDefault = true;
 		}
-		const api = await RemoteRepositories.getApi();
-		const vfs = api.getVirtualUri(Uri.parse(pythonRepository)).with({ authority: 'github' });
-		return { repository: vfs, root: pythonRoot};
+
+		// If we point to github.com we need to turn the URI into a virtual one
+		if (pythonRepositoryUri.authority === 'github.com') {
+			const uriPath = pythonRepositoryUri.path;
+			const extname = path.extname(uriPath);
+			if (extname === '.git') {
+				pythonRepositoryUri = pythonRepositoryUri.with({ path: uriPath.substring(0, uriPath.length - extname.length) });
+			}
+			const api = await RemoteRepositories.getApi();
+			pythonRepositoryUri = api.getVirtualUri(pythonRepositoryUri.with({ authority: 'github' }));
+		}
+
+		// If we are not on the default location make sure we have a python.wasm file
+		if (!isDefault) {
+			try {
+				const binaryLocation = createPythonWasmUri(pythonRepositoryUri, pythonRoot);
+				await workspace.fs.stat(binaryLocation);
+				Tracer.append(`Using Python from ${pythonRepositoryUri}`);
+			} catch (error) {
+				Tracer.append(`Failed to load Python from ${pythonRepositoryUri}`);
+				const api = await RemoteRepositories.getApi();
+				pythonRepositoryUri = api.getVirtualUri(Uri.parse(defaultPythonRepository).with({ authority: 'github' }));
+				pythonRoot = defaultPythonRoot;
+				isDefault = true;
+				Tracer.append(`Falling back to default Python repository ${pythonRepositoryUri}`);
+			}
+		}
+
+		return { repository: pythonRepositoryUri, root: pythonRoot};
 	}
 
 	let _configPromise: Promise<{ repository: Uri; root: string | undefined}> | undefined;
@@ -81,12 +87,13 @@ namespace PythonInstallation  {
 		}
 	});
 
-
 	let _repositoryWatcher: Disposable | undefined;
 	let preloadToken: number = 0;
 	async function triggerPreload(): Promise<void> {
 		const {repository, root} = await getConfig();
-		if (_repositoryWatcher === undefined) {
+		const isVSCodeVFS = repository.scheme === 'vscode-vfs';
+		// We can only preload a repository if we are using a vscode virtual file system.
+		if (isVSCodeVFS && _repositoryWatcher === undefined) {
 			const fsWatcher = workspace.createFileSystemWatcher(new RelativePattern(repository, '*'));
 			_repositoryWatcher =  fsWatcher.onDidChange(async (uri) => {
 				if (uri.toString() === repository.toString()) {
@@ -99,13 +106,13 @@ namespace PythonInstallation  {
 		try {
 			const token = ++preloadToken;
 
-			if (isGithubUri(repository)) {
+			if (isVSCodeVFS) {
 				const remoteHubApi = await RemoteRepositories.getApi();
 				if (remoteHubApi.loadWorkspaceContents !== undefined) {
 					await remoteHubApi.loadWorkspaceContents(repository);
 				}
 				Tracer.append(`Successfully loaded workspace content for repository ${repository.toString()}`);
-			}			
+			}
 			const binaryLocation =  root !== undefined ? Uri.joinPath(repository, root, 'python.wasm') : Uri.joinPath(repository, 'python.wasm');
 			try {
 				const bytes = await workspace.fs.readFile(binaryLocation);
@@ -149,8 +156,8 @@ namespace PythonInstallation  {
 		return wasmBytes;
 	}
 
-	function isGithubUri(uri: Uri): boolean {
-		return uri.authority === 'github.com';
-	}	
+	function createPythonWasmUri(repository: Uri, root: string | undefined) {
+		return root !== undefined ? Uri.joinPath(repository, root, 'python.wasm') : Uri.joinPath(repository, 'python.wasm');
+	}
 }
 export default PythonInstallation;
