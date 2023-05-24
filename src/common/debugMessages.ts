@@ -5,7 +5,6 @@
 
 import { DebugProtocol } from '@vscode/debugprotocol';
 
-
 export class Message implements DebugProtocol.ProtocolMessage {
 	seq: number;
 	type: string;

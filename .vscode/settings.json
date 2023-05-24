@@ -26,12 +26,14 @@
 	],
 	"cSpell.words": [
 		"badf",
+		"debugprotocol",
 		"fdflags",
 		"fdstat",
 		"filestat",
 		"inval",
 		"lookupflags",
 		"notdir",
-		"oflags"
+		"oflags",
+		"Pseudoterminal"
 	]
 }

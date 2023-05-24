@@ -5,23 +5,23 @@
 
 import { Disposable, Terminal, Uri, window } from 'vscode';
 
-import { ServicePseudoTerminal, TerminalMode } from '@vscode/sync-api-service';
+import { WasmPseudoterminal, Wasm } from '@vscode/wasm-wasi';
 import RAL from './ral';
 
 export namespace Terminals {
 
-	type TerminalIdleInfo = [Terminal, ServicePseudoTerminal, Disposable];
-	type TerminalInUseInfo = [Terminal, ServicePseudoTerminal];
+	type TerminalIdleInfo = [Terminal, WasmPseudoterminal, Disposable];
+	type TerminalInUseInfo = [Terminal, WasmPseudoterminal];
 
 	const idleTerminals: Map<string, TerminalIdleInfo> = new Map();
 	const terminalsInUse: Map<string, TerminalInUseInfo> = new Map();
 
-	export function getTerminalInUse(uuid: string): ServicePseudoTerminal | undefined {
+	export function getTerminalInUse(uuid: string): WasmPseudoterminal | undefined {
 		const inUse = terminalsInUse.get(uuid);
 		return inUse?.[1];
 	}
 
-	export function getExecutionTerminal(resource: Uri, show: boolean): ServicePseudoTerminal {
+	export function getExecutionTerminal(resource: Uri, show: boolean): WasmPseudoterminal {
 		const fileName = RAL().path.basename(resource.toString(true));
 		const terminalName = `Executing ${fileName}`;
 		const header = `Executing Python file ${fileName}`;
@@ -29,7 +29,7 @@ export namespace Terminals {
 		return getTerminal(terminalName, header, show, true);
 	}
 
-	export function getReplTerminal(show: boolean): ServicePseudoTerminal {
+	export function getReplTerminal(show: boolean): WasmPseudoterminal {
 		const terminalName = `Python REPL`;
 		const header = `Running Python REPL`;
 		return getTerminal(terminalName, header, show, false);
@@ -51,7 +51,7 @@ export namespace Terminals {
 					terminal.show(preserveFocus);
 				}
 				if (header !== undefined) {
-					pty.writeString(formatMessageForTerminal(header, true, true));
+					void pty.write(formatMessageForTerminal(header, true, true));
 				}
 				terminalsInUse.set(pty.id, [terminal, pty]);
 				return pty;
@@ -59,7 +59,7 @@ export namespace Terminals {
 		}
 
 		// We haven't found an idle terminal. So create a new one;
-		const pty = ServicePseudoTerminal.create();
+		const pty = Wasm.api().createPseudoterminal();
 		pty.setMode(TerminalMode.inUse);
 		pty.onDidClose(() => {
 			clearTerminal(pty);

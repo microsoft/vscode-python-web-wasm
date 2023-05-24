@@ -8,12 +8,11 @@ import {
 	DebugSession, ExtensionContext, Uri, window, WorkspaceFolder, workspace
 } from 'vscode';
 
-import { TerminalMode } from '@vscode/sync-api-service';
-
 import RAL from './ral';
 import PythonInstallation from './pythonInstallation';
 import { DebugAdapter, DebugProperties } from './debugAdapter';
 import { Terminals } from './terminals';
+import { Wasm } from '@vscode/wasm-wasi';
 
 function isCossOriginIsolated(): boolean {
 	if (RAL().isCrossOriginIsolated) {
@@ -98,7 +97,8 @@ export class DebugAdapterDescriptorFactory implements DebugAdapterDescriptorFact
 }
 
 
-export function activate(context: ExtensionContext) {
+export async function activate(context: ExtensionContext) {
+	await Wasm.load();
 	const preloadPromise = PythonInstallation.preload();
 	context.subscriptions.push(
 		commands.registerCommand('vscode-python-web-wasm.debug.runEditorContents', async (resource: Uri) => {
