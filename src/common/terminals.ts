@@ -2,23 +2,43 @@
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
+import * as uuid from 'uuid';
 
 import { Disposable, Terminal, Uri, window } from 'vscode';
 
-import { WasmPseudoterminal, Wasm } from '@vscode/wasm-wasi';
+import { WasmPseudoterminal, Wasm, PseudoterminalState } from '@vscode/wasm-wasi';
+
 import RAL from './ral';
 
 export namespace Terminals {
 
-	type TerminalIdleInfo = [Terminal, WasmPseudoterminal, Disposable];
-	type TerminalInUseInfo = [Terminal, WasmPseudoterminal];
+	type TerminalFreeInfo = [Terminal, WasmPseudoterminal, string, Disposable];
+	type TerminalBusyInfo = [Terminal, WasmPseudoterminal, string];
 
-	const idleTerminals: Map<string, TerminalIdleInfo> = new Map();
-	const terminalsInUse: Map<string, TerminalInUseInfo> = new Map();
+	const freeTerminals: Map<WasmPseudoterminal, TerminalFreeInfo> = new Map();
+	const busyTerminals: Map<WasmPseudoterminal, TerminalBusyInfo> = new Map();
 
-	export function getTerminalInUse(uuid: string): WasmPseudoterminal | undefined {
-		const inUse = terminalsInUse.get(uuid);
-		return inUse?.[1];
+	export function getTerminalHandle(terminal: WasmPseudoterminal): string | undefined {
+		for (const free of freeTerminals.values()) {
+			if (free[1] === terminal) {
+				return free[2];
+			}
+		}
+		for (const busy of busyTerminals.values()) {
+			if (busy[1] === terminal) {
+				return busy[2];
+			}
+		}
+		return undefined;
+	}
+
+	export function getBusyTerminal(uuid: string): WasmPseudoterminal | undefined {
+		for (const busy of busyTerminals.values()) {
+			if (busy[2] === uuid) {
+				return busy[1];
+			}
+		}
+		return undefined;
 	}
 
 	export function getExecutionTerminal(resource: Uri, show: boolean): WasmPseudoterminal {
@@ -37,15 +57,16 @@ export namespace Terminals {
 
 	function getTerminal(terminalName: string, header: string | undefined, show: boolean, preserveFocus: boolean) {
 		// Check if we have an idle terminal
-		if (idleTerminals.size > 0) {
-			const entry = idleTerminals.entries().next();
+		if (freeTerminals.size > 0) {
+			const entry = freeTerminals.entries().next();
 			if (entry.done === false) {
-				idleTerminals.delete(entry.value[0]);
+				freeTerminals.delete(entry.value[0]);
 				const info = entry.value[1];
-				info[2].dispose();
+				info[3].dispose();
 				const terminal = info[0];
 				const pty = info[1];
-				pty.setMode(TerminalMode.inUse);
+				const uuid = info[2];
+				pty.setState(PseudoterminalState.busy);
 				pty.setName(terminalName);
 				if (show) {
 					terminal.show(preserveFocus);
@@ -53,70 +74,67 @@ export namespace Terminals {
 				if (header !== undefined) {
 					void pty.write(formatMessageForTerminal(header, true, true));
 				}
-				terminalsInUse.set(pty.id, [terminal, pty]);
+				busyTerminals.set(pty, [terminal, pty, uuid]);
 				return pty;
 			}
 		}
 
 		// We haven't found an idle terminal. So create a new one;
 		const pty = Wasm.api().createPseudoterminal();
-		pty.setMode(TerminalMode.inUse);
-		pty.onDidClose(() => {
+		pty.setState(PseudoterminalState.busy);
+		pty.onDidCloseTerminal(() => {
 			clearTerminal(pty);
-
 		});
 		const terminal = window.createTerminal({ name: terminalName, pty, isTransient: true });
 		if (show) {
 			terminal.show(preserveFocus);
 		}
 		if (header !== undefined) {
-			pty.writeString(formatMessageForTerminal(header, false, true));
+			pty.write(formatMessageForTerminal(header, false, true));
 		}
-		const info: TerminalInUseInfo = [terminal, pty];
-		terminalsInUse.set(pty.id, info);
+		const info: TerminalBusyInfo = [terminal, pty, uuid.v4()];
+		busyTerminals.set(pty, info);
 		return pty;
 	}
 
-	export function releaseExecutionTerminal(pty: ServicePseudoTerminal, terminated: boolean = false): void {
+	export function releaseExecutionTerminal(pty: WasmPseudoterminal, terminated: boolean = false): void {
 		const footer = terminated
 			? `Python execution got terminated. The terminal will be reused, press any key to close it.`
 			: `Terminal will be reused, press any key to close it.`;
 		releaseTerminal(pty, footer);
 	}
 
-	export function releaseReplTerminal(pty: ServicePseudoTerminal, terminated: boolean = false): void {
+	export function releaseReplTerminal(pty: WasmPseudoterminal, terminated: boolean = false): void {
 		const footer = terminated
 			? `Repl execution got terminated. The terminal will be reused, press any key to close it.`
 			: `Terminal will be reused, press any key to close it.`;
 		releaseTerminal(pty, footer);
 	}
 
-	function releaseTerminal(pty: ServicePseudoTerminal, footer: string): void {
-		const id = pty.id;
-		const info = terminalsInUse.get(id);
+	function releaseTerminal(pty: WasmPseudoterminal, footer: string): void {
+		const info = busyTerminals.get(pty);
 		// Terminal might have gotten closed
 		if (info === undefined) {
 			return;
 		}
-		pty.setMode(TerminalMode.idle);
-		pty.writeString(formatMessageForTerminal(footer, true, false));
+		pty.setState(PseudoterminalState.free);
+		void pty.write(formatMessageForTerminal(footer, true, false));
 		const disposable = pty.onAnyKey(() => {
-			const terminal = findTerminal(pty.id);
+			const terminal = findTerminal(pty);
 			clearTerminal(pty);
 			terminal?.dispose();
 		});
-		terminalsInUse.delete(id);
-		idleTerminals.set(id, [info[0], info[1], disposable]);
+		busyTerminals.delete(pty);
+		freeTerminals.set(pty, [info[0], info[1], info[2], disposable]);
 	}
 
-	function clearTerminal(pty: ServicePseudoTerminal): void {
-		const id = pty.id;
-		terminalsInUse.delete(id);
-		idleTerminals.delete(id);
+	function clearTerminal(pty: WasmPseudoterminal): void {
+		busyTerminals.delete(pty);
+		freeTerminals.delete(pty);
 	}
 
-	function findTerminal(id: string): Terminal | undefined {
-		const info = idleTerminals.get(id) ?? terminalsInUse.get(id);
+	function findTerminal(pty: WasmPseudoterminal): Terminal | undefined {
+		const info = freeTerminals.get(pty) ?? busyTerminals.get(pty);
 		return info && info[0];
 	}
 

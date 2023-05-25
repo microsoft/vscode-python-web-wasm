@@ -156,12 +156,12 @@
 		],
 		"configuration": {
 			"type": "object",
-			"title": "Python WASM",
+			"title": "Python WASM installation",
 			"properties": {
 				"python.wasm.runtime": {
 					"scope": "machine-overridable",
 					"type": "string",
-					"description": "A URL for a GitHub that hosts the python.wasm file together with the default Python libraries."
+					"description": "A URL for a GitHub repository that hosts the python.wasm file together with the default Python libraries."
 				}
 			}
 		}

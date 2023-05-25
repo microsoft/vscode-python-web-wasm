@@ -2,36 +2,63 @@
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
-import path from 'path';
+import { TextDecoder } from 'util';
+import * as path from 'path';
+
+import type { Disposable } from 'vscode';
 
 import RAL from '../common/ral';
-import { Launcher } from '../common/launcher';
-import { DesktopLauncher } from './launcher';
 
-const _ril: RAL = Object.freeze<RAL>({
-	launcher: Object.freeze({
-		create(): Launcher {
-			return new DesktopLauncher();
+interface RIL extends RAL {
+}
+
+const _ril: RIL = Object.freeze<RIL>({
+	isCrossOriginIsolated: true,
+	TextEncoder: Object.freeze({
+		create(encoding: BufferEncoding = 'utf-8'): RAL.TextEncoder {
+			return {
+				encode(input?: string): Uint8Array {
+					return Buffer.from(input ?? '', encoding);
+				}
+			};
 		}
 	}),
-	timer: Object.freeze({
-		setTimeout(callback: () => void, timeoutMs: number): any {
-			return setTimeout(callback,timeoutMs);
+	TextDecoder: Object.freeze({
+		create(encoding: string = 'utf-8'): RAL.TextDecoder {
+			return new TextDecoder(encoding);
 		}
 	}),
 	path: path.posix,
-	isCrossOriginIsolated: true
+	console: console,
+	timer: Object.freeze({
+		setTimeout(callback: (...args: any[]) => void, ms: number, ...args: any[]): Disposable {
+			const handle = setTimeout(callback, ms, ...args);
+			return { dispose: () => clearTimeout(handle)};
+		},
+		setImmediate(callback: (...args: any[]) => void, ...args: any[]): Disposable {
+			const handle = setImmediate(callback, ...args);
+			return { dispose: () => clearImmediate(handle) };
+		},
+		setInterval(callback: (...args: any[]) => void, ms: number, ...args: any[]): Disposable {
+			const handle = setInterval(callback, ms, ...args);
+			return { dispose: () => clearInterval(handle) };
+		}
+	}),
 });
 
-
-function RIL(): RAL {
+function RIL(): RIL {
 	return _ril;
 }
 
 namespace RIL {
 	export function install(): void {
-		RAL.install(_ril);
+		if (!RAL.isInstalled()) {
+			RAL.install(_ril);
+		}
 	}
 }
 
+if (!RAL.isInstalled()) {
+	RAL.install(_ril);
+}
 export default RIL;

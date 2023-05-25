@@ -2,17 +2,15 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-/// <reference path="./typings.d.ts" />
-
 import * as vscode from 'vscode';
+
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { ServicePseudoTerminal, RAL as SyncRal, TerminalMode, CharacterDeviceDriver } from '@vscode/sync-api-service';
+import { WasmPseudoterminal, PseudoterminalState, WasmProcess, Stdio, Wasm, RootFileSystem, Writable, Readable } from '@vscode/wasm-wasi';
+
 import RAL from './ral';
 import { Response } from './debugMessages';
-import { Launcher, PathMapping } from './launcher';
 import { Terminals } from './terminals';
-import { DebugCharacterDeviceDriver } from './debugCharacterDeviceDriver';
-import { DebugConsole } from './debugConsole';
+import Python from './python';
 
 const StackFrameRegex = /^[>,\s]+(.+)\((\d+)\)(.*)\(\)/;
 const TracebackFrameRegex = /^\s+File "(.+)", line (\d+)/;
@@ -40,10 +38,9 @@ export type DebugProperties = {
 };
 
 export class DebugAdapter implements vscode.DebugAdapter {
-	private _launcher: Launcher | undefined;
-	private _debuggerDriver: DebugCharacterDeviceDriver | undefined;
-	private _debugConsole: DebugConsole | undefined;
-	private _terminal: ServicePseudoTerminal | undefined;
+	private _process: WasmProcess | undefined;
+	private _rootFileSystem: RootFileSystem | undefined;
+	private _debugPipes: { input: Writable, output: Readable } | undefined;
 	private _cwd: string | undefined;
 	private _sequence = 0;
 	private _outputChain: Promise<string> | undefined;
@@ -58,10 +55,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		new vscode.EventEmitter<DebugProtocol.Response | DebugProtocol.Event>();
 	private _launchComplete: Promise<string>;
 	private _launchCompleteResolver: ((value: string) => void) | undefined;
-	private _pathMappingsComplete: Promise<void>;
-	private _pathMappingsCompleteResolver: (() => void) | undefined;
-	private _wasmPath2WorkspaceUri: Map<string, vscode.Uri>;
-	private _workspaceUri2WasmPath: Map<string, string>;
 
 	constructor(
 		readonly session: vscode.DebugSession,
@@ -75,11 +68,6 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._launchComplete = new Promise((resolve, reject) => {
 			this._launchCompleteResolver = resolve;
 		});
-		this._pathMappingsComplete = new Promise((resolve, reject) => {
-			this._pathMappingsCompleteResolver = resolve;
-		});
-		this._wasmPath2WorkspaceUri = new Map();
-		this._workspaceUri2WasmPath = new Map();
 	}
 	get onDidSendMessage(): vscode.Event<DebugProtocol.ProtocolMessage> {
 		return this._didSendMessageEmitter.event;
@@ -88,7 +76,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		if (message.type === 'request') {
 			this._handleRequest(message as DebugProtocol.Request).catch((error) => {
 				// Todo@dirkb Wie should think about a output channel to log this
-				console.error(`Unexpected error occured when handling debugger request`, error);
+				RAL().console.error(`Unexpected error occured when handling debugger request`, error);
 			});
 		}
 	}
@@ -193,11 +181,11 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _terminate() {
-		if (this._launcher) {
+		if (this._process !== undefined) {
 			this._writetostdin('exit\n');
-			const launcher = this._launcher;
-			this._launcher = undefined;
-			void launcher.terminate();
+			const process = this._process;
+			this._process = undefined;
+			void process.terminate();
 		}
 	}
 
@@ -278,7 +266,9 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._outputChain = current.then(() => {
 			return new Promise<string>((resolve, reject) => {
 				let output = '';
-				const disposable = this._debuggerDriver?.output((str) => {
+				const decoder = RAL().TextDecoder.create();
+				const disposable = this._debugPipes?.output.onData((chunk) => {
+					let str = decoder.decode(chunk);
 					// In command mode, remove carriage returns. Makes handling simpler
 					str = mode === 'command' ? str.replace(/\r/g, '') : str;
 
@@ -304,16 +294,14 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private async _translateToWorkspacePath(wasmPath: string): Promise<string> {
-		// Have to wait for path mappings to come in from the device
-		await this._pathMappingsComplete;
-
-		const normalized = wasmPath.replace(/\\/g, '/');
-		for (const [key, uri] of this._wasmPath2WorkspaceUri) {
-			if (normalized.startsWith(key)) {
-				return uri.with({ path: RAL().path.join(uri.path, normalized.substring(key.length))}).toString();
-			}
+		if (this._rootFileSystem === undefined) {
+			throw new Error('No root file system');
 		}
-		return normalized;
+		const result = await this._rootFileSystem.toVSCode(wasmPath);
+		if (result === undefined) {
+			throw new Error(`Unable to translate ${wasmPath} to workspace path`);
+		}
+		return result.toString();
 	}
 
 	private _convertToUriString(path: string): string {
@@ -330,16 +318,15 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private async _translateFromWorkspacePath(workspacePath: string): Promise<string> {
-		// Have to wait for path mappings to come in from the device
-		await this._pathMappingsComplete;
-
-		const normalized = this._convertToUriString(workspacePath.replace(/\\/g, '/'));
-		for (const [key, wasmPath] of this._workspaceUri2WasmPath) {
-			if (normalized.startsWith(key)) {
-				return RAL().path.join(wasmPath, normalized.substring(key.length));
-			}
+		if (this._rootFileSystem === undefined) {
+			throw new Error('No root file system');
 		}
-		return normalized;
+
+		const result = await this._rootFileSystem.toWasm(vscode.Uri.parse(workspacePath));
+		if (result === undefined) {
+			throw new Error(`Unable to translate ${workspacePath} to wasm path`);
+		}
+		return result.toString();
 	}
 
 	private async _parseStackFrames(frames: string): Promise<DebugProtocol.StackFrame[]> {
@@ -689,59 +676,70 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private async _handleLaunch(message: DebugProtocol.LaunchRequest): Promise<void> {
-		if (this._launcher !== undefined) {
+		if (this._process !== undefined) {
 			return;
 		}
+		const wasm = Wasm.api();
 		const args: DebugProtocol.LaunchRequestArguments & { program: string, ptyInfo?: { uuid: string } } = message.arguments as any;
 		const uuid = args.ptyInfo?.uuid;
-		const stdio: CharacterDeviceDriver = (() => {
-			if (uuid !== undefined) {
-				this._terminal = Terminals.getTerminalInUse(uuid)!;
-				return this._terminal;
-			} else {
-				this._debugConsole = new DebugConsole();
-				this._debugConsole.onStdout((value) => {
-					this._sendEvent<DebugProtocol.OutputEvent>({
-						type: 'event',
-						seq: this._sequence++,
-						event: 'output',
-						body: {
-							category: 'stdout',
-							output: value
-						}
-					});
+		let stdio: Stdio;
+		let terminal: WasmPseudoterminal | undefined;
+		if (uuid !== undefined) {
+			terminal =  Terminals.getBusyTerminal(uuid)!;
+			stdio = terminal.stdio;
+		} else {
+			const input = wasm.createWritable();
+			const out = wasm.createReadable();
+			const decoder = RAL().TextDecoder.create();
+			out.onData((data) => {
+				this._sendEvent<DebugProtocol.OutputEvent>({
+					type: 'event',
+					seq: this._sequence++,
+					event: 'output',
+					body: {
+						category: 'stdout',
+						output: decoder.decode(data)
+					}
 				});
-				this._debugConsole.onStderr((value) => {
-					this._sendEvent<DebugProtocol.OutputEvent>({
-						type: 'event',
-						seq: this._sequence++,
-						event: 'output',
-						body: {
-							category: 'stderr',
-							output: value
-						}
-					});
+			});
+			const err = wasm.createReadable();
+			err.onData((data) => {
+				this._sendEvent<DebugProtocol.OutputEvent>({
+					type: 'event',
+					seq: this._sequence++,
+					event: 'output',
+					body: {
+						category: 'stderr',
+						output: decoder.decode(data)
+					}
 				});
-				return this._debugConsole;
-			}
-		})();
-		this._launcher = RAL().launcher.create();
-		this._launcher.onPathMapping(this._handlePathMappings.bind(this));
-		this._launcher.onExit().then((_rval) => {
-		}).catch(e => {
-			console.error(e);
-		}).finally(() => {
-			this._launcher = undefined;
-			this._sendTerminated();
-			if (this._terminal !== undefined) {
-				Terminals.releaseExecutionTerminal(this._terminal, false);
-			}
-		});
-		this._debuggerDriver = new DebugCharacterDeviceDriver();
+			});
+
+			stdio = {
+				in: { kind: 'pipeIn' as const, pipe: input },
+				out: { kind: 'pipeOut' as const, pipe: out },
+				err: { kind: 'pipeOut' as const, pipe: err }
+			};
+		}
+
+		const processInfo = await Python.createDebugProcess(stdio, vscode.Uri.parse(args.program), PdbTerminator);
+		this._process = processInfo.process;
+		this._rootFileSystem = processInfo.rootFileSystem;
+		this._debugPipes = { input: processInfo.input, output: processInfo.output };
 
 		// Wait for debuggee to emit first bit of output before continuing. First bit of output may be an exception that the program crashed
 		const launchOutput = await this._waitForPdbOutput('command', () => {
-			return this._launcher!.debug(this.context, args.program.replace(/\\/g, '/'), stdio, this._debuggerDriver!, PdbTerminator);
+			this._process!.run().
+				catch((error) => RAL().console.error(error)).
+				finally(() => {
+					this._process = undefined;
+					this._rootFileSystem = undefined;
+					this._debugPipes = undefined;
+					this._sendTerminated();
+					if (terminal !== undefined) {
+						Terminals.releaseExecutionTerminal(terminal, false);
+					}
+				});
 		});
 
 		// Setup an alias for printing exc info
@@ -759,28 +757,13 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		this._sendResponse<DebugProtocol.LaunchResponse>({
 			type: 'response',
 			request_seq: message.seq,
-			success: !!this._launcher,
+			success: !!this._process,
 			command: message.command,
 			seq: 1
 		});
 
 		// Indicate okay to send configuration done
 		this._launchCompleteResolver!(launchOutput);
-	}
-
-	private _handlePathMappings(mappings: PathMapping) {
-		this._wasmPath2WorkspaceUri.clear();
-		this._workspaceUri2WasmPath.clear();
-		for (const key of Object.keys(mappings)) {
-			const uri = vscode.Uri.from(mappings[key]);
-			if (key[key.length - 1] !== '/') {
-				this._wasmPath2WorkspaceUri.set(`${key}/`, uri);
-			} else {
-				this._wasmPath2WorkspaceUri.set(key, uri);
-			}
-			this._workspaceUri2WasmPath.set(`${uri.toString()}/`, key);
-		}
-		this._pathMappingsCompleteResolver!();
 	}
 
 	private async _stepInto() {
@@ -921,7 +904,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _writetostdin(text: string) {
-		void this._debuggerDriver?.input(text);
+		void this._debugPipes?.input.write(text);
 	}
 
 	private async _executecommand(command: string): Promise<string> {
@@ -954,4 +937,3 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		});
 	}
 }
-

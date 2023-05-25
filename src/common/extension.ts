@@ -4,15 +4,17 @@
  * ------------------------------------------------------------------------------------------ */
 
 import {
-	CancellationToken, commands, debug, DebugAdapterDescriptor, DebugAdapterInlineImplementation, DebugConfiguration,
-	DebugSession, ExtensionContext, Uri, window, WorkspaceFolder, workspace
+	CancellationToken, commands, debug, DebugAdapterDescriptor, DebugAdapterInlineImplementation,
+	DebugConfiguration, DebugSession, ExtensionContext, Uri, window, WorkspaceFolder
 } from 'vscode';
 
+import { PseudoterminalState, Wasm } from '@vscode/wasm-wasi';
+
 import RAL from './ral';
-import PythonInstallation from './pythonInstallation';
 import { DebugAdapter, DebugProperties } from './debugAdapter';
 import { Terminals } from './terminals';
-import { Wasm } from '@vscode/wasm-wasi';
+import Python from './python';
+import Logger from './logger';
 
 function isCossOriginIsolated(): boolean {
 	if (RAL().isCrossOriginIsolated) {
@@ -36,7 +38,7 @@ function getResourceUri(fileOrUriString: string): Uri | undefined {
 
 export class DebugConfigurationProvider implements DebugConfigurationProvider {
 
-	constructor(private readonly preloadPromise: Promise<void>) {
+	constructor() {
 	}
 
 	/**
@@ -47,7 +49,6 @@ export class DebugConfigurationProvider implements DebugConfigurationProvider {
 		if (!isCossOriginIsolated()) {
 			return undefined;
 		}
-		await this.preloadPromise;
 		if (!config.type && !config.request && !config.name) {
 			const editor = window.activeTextEditor;
 			if (editor && editor.document.languageId === 'python') {
@@ -79,8 +80,8 @@ export class DebugConfigurationProvider implements DebugConfigurationProvider {
 
 		if (config.console === 'integratedTerminal' && targetResource !== undefined) {
 			const pty = Terminals.getExecutionTerminal(targetResource, true);
-			pty.setMode(TerminalMode.idle); // DebugAdapter will switch to in use
-			config.ptyInfo = { uuid: pty.id };
+			pty.setState(PseudoterminalState.free); // DebugAdapter will switch to busy
+			config.ptyInfo = { uuid: Terminals.getTerminalHandle(pty) };
 		}
 
 		return config;
@@ -88,18 +89,17 @@ export class DebugConfigurationProvider implements DebugConfigurationProvider {
 }
 
 export class DebugAdapterDescriptorFactory implements DebugAdapterDescriptorFactory {
-	constructor(private readonly context: ExtensionContext, private readonly preloadPromise: Promise<void>) {
+	constructor(private readonly context: ExtensionContext) {
 	}
 	async createDebugAdapterDescriptor(session: DebugSession): Promise<DebugAdapterDescriptor> {
-		await this.preloadPromise;
 		return new DebugAdapterInlineImplementation(new DebugAdapter(session, this.context, RAL()));
 	}
 }
 
 
 export async function activate(context: ExtensionContext) {
-	await Wasm.load();
-	const preloadPromise = PythonInstallation.preload();
+	const wasm = await Wasm.load();
+	Python.initialize(context);
 	context.subscriptions.push(
 		commands.registerCommand('vscode-python-web-wasm.debug.runEditorContents', async (resource: Uri) => {
 			if (!isCossOriginIsolated()) {
@@ -110,21 +110,23 @@ export async function activate(context: ExtensionContext) {
 				targetResource = window.activeTextEditor.document.uri;
 			}
 			if (targetResource) {
-				await preloadPromise;
-				const pty = Terminals.getExecutionTerminal(targetResource, true);
-				const launcher = RAL().launcher.create();
-				const ctrlC = pty.onDidCtrlC(() => {
-					ctrlC.dispose();
-					launcher.terminate().catch(console.error);
-					Terminals.releaseExecutionTerminal(pty, true);
-				});
-				await launcher.run(context, targetResource.toString(true), pty);
-				launcher.onExit().catch(() => {
-					// todo@dirkb need to think how to handle this.
-				}).finally(() => {
-					ctrlC.dispose();
-					Terminals.releaseExecutionTerminal(pty);
-				});
+				try {
+					const pty = Terminals.getExecutionTerminal(targetResource, true);
+					const process = await Python.createProcess(pty.stdio, targetResource);
+					const ctrlC = pty.onDidCtrlC(() => {
+						ctrlC.dispose();
+						process.terminate().catch(RAL().console.error);
+						Terminals.releaseExecutionTerminal(pty, true);
+					});
+					try {
+						await process.run();
+					} finally {
+						ctrlC.dispose();
+						Terminals.releaseExecutionTerminal(pty);
+					}
+				} catch (error: any) {
+					Logger().error(error);
+				}
 			}
 			return false;
 		}),
@@ -137,7 +139,6 @@ export async function activate(context: ExtensionContext) {
 				targetResource = window.activeTextEditor.document.uri;
 			}
 			if (targetResource) {
-				await preloadPromise;
 				return debug.startDebugging(undefined, {
 					type: 'python-web-wasm',
 					name: 'Debug Python in WASM',
@@ -153,20 +154,23 @@ export async function activate(context: ExtensionContext) {
 			if (!isCossOriginIsolated()) {
 				return false;
 			}
-			const pty = Terminals.getReplTerminal(true);
-			const ctrlC = pty.onDidCtrlC(() => {
-				ctrlC.dispose();
-				launcher.terminate().catch(console.error);
-				Terminals.releaseReplTerminal(pty, true);
-			});
-			const launcher = RAL().launcher.create();
-			await launcher.startRepl(context, pty);
-			launcher.onExit().catch(() => {
-				// todo@dirkb need to think how to handle this.
-			}).finally(() => {
-				ctrlC.dispose();
-				Terminals.releaseReplTerminal(pty);
-			});
+			try {
+				const pty = Terminals.getReplTerminal(true);
+				const process = await Python.createProcess(pty.stdio);
+				const ctrlC = pty.onDidCtrlC(() => {
+					ctrlC.dispose();
+					process.terminate().catch(RAL().console.error);
+					Terminals.releaseReplTerminal(pty, true);
+				});
+				try {
+					await process.run();
+				} finally {
+					ctrlC.dispose();
+					Terminals.releaseReplTerminal(pty);
+				}
+			} catch (error: any) {
+				Logger().error(error);
+			}
 			return true;
 		}),
 		commands.registerCommand('vscode-python-web-wasm.debug.getProgramName', config => {
@@ -177,13 +181,11 @@ export async function activate(context: ExtensionContext) {
 		})
 	);
 
-	const provider = new DebugConfigurationProvider(preloadPromise);
+	const provider = new DebugConfigurationProvider();
 	context.subscriptions.push(debug.registerDebugConfigurationProvider('python-web-wasm', provider));
 
-	const factory = new DebugAdapterDescriptorFactory(context, preloadPromise);
+	const factory = new DebugAdapterDescriptorFactory(context);
 	context.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('python-web-wasm', factory));
-
-	return preloadPromise;
 }
 
 export function deactivate(): Promise<void> {
