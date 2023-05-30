@@ -29,14 +29,6 @@ const webOptions = {
 };
 
 /** @type BuildOptions */
-const webWorkerOptions = {
-	entryPoints: ['src/web/pythonWasmWorker.ts'],
-	outfile: 'dist/web/pythonWasmWorker.js',
-	format: 'iife',
-	...sharedBrowserOptions,
-};
-
-/** @type BuildOptions */
 const sharedDesktopOptions = {
 	bundle: true,
 	external: ['vscode'],
@@ -53,21 +45,14 @@ const desktopOptions = {
 	...sharedDesktopOptions,
 };
 
-/** @type BuildOptions */
-const desktopWorkerOptions = {
-	entryPoints: ['src/desktop/pythonWasmWorker.ts'],
-	outfile: 'dist/desktop/pythonWasmWorker.js',
-	format: 'iife',
-	...sharedDesktopOptions,
-};
-
 if (watch) {
 	await Promise.all([
 		(await esbuild.context(webOptions)).watch(),
-		(await esbuild.context(webWorkerOptions)).watch(),
 		(await esbuild.context(desktopOptions)).watch(),
-		(await esbuild.context(desktopWorkerOptions)).watch()
 	]);
 } else {
-	await Promise.all([esbuild.build(webOptions), esbuild.build(webWorkerOptions), esbuild.build(desktopOptions), esbuild.build(desktopWorkerOptions)]);
+	await Promise.all([
+		esbuild.build(webOptions),
+		esbuild.build(desktopOptions)
+	]);
 }

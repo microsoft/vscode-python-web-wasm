@@ -111,7 +111,7 @@ namespace Python {
 			env: {
  				PYTHONPATH: '/workspace'
  			},
-			args: file !== undefined ? ['-B', '-X', 'utf8', file] : ['-B', '-X', 'utf8']
+			args: ['-B', '-X', 'utf8', '/$debug/main.py']
 		};
 		const process = await Wasm.api().createProcess('python', module, options);
 		return { process, rootFileSystem, input, output };

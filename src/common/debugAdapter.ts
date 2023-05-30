@@ -5,7 +5,7 @@
 import * as vscode from 'vscode';
 
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { WasmPseudoterminal, PseudoterminalState, WasmProcess, Stdio, Wasm, RootFileSystem, Writable, Readable } from '@vscode/wasm-wasi';
+import { WasmPseudoterminal, WasmProcess, Stdio, Wasm, RootFileSystem, Writable, Readable } from '@vscode/wasm-wasi';
 
 import RAL from './ral';
 import { Response } from './debugMessages';
@@ -267,6 +267,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 			return new Promise<string>((resolve, reject) => {
 				let output = '';
 				const decoder = RAL().TextDecoder.create();
+				this._debugPipes?.output.pause();
 				const disposable = this._debugPipes?.output.onData((chunk) => {
 					let str = decoder.decode(chunk);
 					// In command mode, remove carriage returns. Makes handling simpler
@@ -274,6 +275,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 
 					// We are finished when the output ends with `(Pdb) `
 					if (str.endsWith(PdbTerminator)) {
+						this._debugPipes?.output.pause();
 						disposable?.dispose();
 						output = `${output}${str.slice(0, str.length - PdbTerminator.length)}`;
 						this._stopped = true;
@@ -286,6 +288,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 						output = `${output}${str}`;
 					}
 				});
+				this._debugPipes?.output.resume();
 				this._stopped = false;
 				generator();
 			});
@@ -730,8 +733,9 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		// Wait for debuggee to emit first bit of output before continuing. First bit of output may be an exception that the program crashed
 		const launchOutput = await this._waitForPdbOutput('command', () => {
 			this._process!.run().
-				catch((error) => RAL().console.error(error)).
-				finally(() => {
+				catch((error) => {
+					RAL().console.error(error);
+				}).finally(() => {
 					this._process = undefined;
 					this._rootFileSystem = undefined;
 					this._debugPipes = undefined;

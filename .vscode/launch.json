@@ -6,11 +6,13 @@
 	"configurations": [
 		{
 			"args": [
-				"--extensionDevelopmentPath=${workspaceFolder}"
+				"--extensionDevelopmentPath=${workspaceFolder}",
+				"--extensionDevelopmentPath=${workspaceFolder}/../../vscode-wasm/wasm-wasi-core"
 			],
 			"name": "Launch in Desktop - Node ExtHost",
 			"outFiles": [
-				"${workspaceFolder}/out/desktop/**/*.js"
+				"${workspaceFolder}/out/desktop/**/*.js",
+				"${workspaceFolder}/../../vscode-wasm/wasm-wasi-core/dist/**/*.js"
 			],
 			"preLaunchTask": "npm: esbuild",
 			"request": "launch",
