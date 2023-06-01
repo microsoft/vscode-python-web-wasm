@@ -15,7 +15,7 @@
 		"url": "https://github.com/microsoft/vscode-python-web-wasm/issues"
 	},
 	"engines": {
-		"vscode": "^1.75.0"
+		"vscode": "^1.78.0"
 	},
 	"main": "./dist/desktop/extension.js",
 	"browser": "./dist/web/extension.js",
@@ -23,9 +23,6 @@
 		"onLanguage:python",
 		"onDebugResolve:python-web-wasm",
 		"onDebug"
-	],
-	"extensionDependencies": [
-		"ms-vscode.remote-repositories"
 	],
 	"dependencies": {
 		"@types/path-browserify": "^1.0.0",
@@ -36,7 +33,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "^16.11.57",
-		"@types/vscode": "1.75.0",
+		"@types/vscode": "1.78.0",
 		"@types/uuid": "^9.0.0",
 		"@typescript-eslint/eslint-plugin": "^5.51.0",
 		"@typescript-eslint/parser": "^5.51.0",

@@ -300,11 +300,9 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		if (this._rootFileSystem === undefined) {
 			throw new Error('No root file system');
 		}
-		const result = await this._rootFileSystem.toVSCode(wasmPath);
-		if (result === undefined) {
-			throw new Error(`Unable to translate ${wasmPath} to workspace path`);
-		}
-		return result.toString();
+		const normalized = wasmPath.replace(/\\/g, '/');
+		const result = await this._rootFileSystem.toVSCode(normalized);
+		return result !== undefined ? result.toString() : normalized;
 	}
 
 	private _convertToUriString(path: string): string {
@@ -324,12 +322,9 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		if (this._rootFileSystem === undefined) {
 			throw new Error('No root file system');
 		}
-
+		const normalized = this._convertToUriString(workspacePath.replace(/\\/g, '/'));
 		const result = await this._rootFileSystem.toWasm(vscode.Uri.parse(workspacePath));
-		if (result === undefined) {
-			throw new Error(`Unable to translate ${workspacePath} to wasm path`);
-		}
-		return result.toString();
+		return result !== undefined ? result.toString() : normalized;
 	}
 
 	private async _parseStackFrames(frames: string): Promise<DebugProtocol.StackFrame[]> {
@@ -562,9 +557,12 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _isMyCode(file: string): boolean {
-		for (const value of this._workspaceUri2WasmPath.keys()) {
-			if (file.startsWith(value)) {
-				return true;
+		const folders = vscode.workspace.workspaceFolders;
+		if (folders !== undefined) {
+			for (const folder of folders) {
+				if (file.startsWith(folder.uri.toString())) {
+					return true;
+				}
 			}
 		}
 
