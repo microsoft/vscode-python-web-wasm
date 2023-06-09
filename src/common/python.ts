@@ -5,7 +5,7 @@
 import { Disposable, ExtensionContext, RelativePattern, Uri, workspace } from 'vscode';
 import {
 	ExtensionLocationDescriptor, MemoryFileSystem, MountPointDescriptor, ProcessOptions, Readable, RootFileSystem, Stdio,
-	VSCodeFileSystemDescriptor, Wasm, WasmProcess, Writable
+	VSCodeFileSystemDescriptor, Wasm, WasmProcess, WasmPseudoterminal, Writable
 } from '@vscode/wasm-wasi';
 
 import RAL from './ral';
@@ -51,6 +51,56 @@ run(debugger, target)`;
 	}
 }
 
+export class DebugProcess {
+	private readonly _process: WasmProcess;
+	private readonly _rootFileSystem: RootFileSystem;
+	private readonly _dbgin: Writable;
+	private readonly _dbgout: Readable;
+
+	constructor(process: WasmProcess, rootFileSystem: RootFileSystem, dbgin: Writable, dbgout: Readable) {
+		this._process = process;
+		this._rootFileSystem = rootFileSystem;
+		this._dbgin = dbgin;
+		this._dbgout = dbgout;
+	}
+
+	public get stdin(): Writable | undefined {
+		return this._process.stdin;
+	}
+
+	public get stdout(): Readable | undefined {
+		return this._process.stdout;
+	}
+
+	public get stderr(): Readable | undefined {
+		return this._process.stderr;
+	}
+
+	public get dbgin(): Writable {
+		return this._dbgin;
+	}
+
+	public get dbgout(): Readable {
+		return this._dbgout;
+	}
+
+	public toWasm(file: Uri): Promise<string | undefined> {
+		return this._rootFileSystem.toWasm(file);
+	}
+
+	public toVSCode(file: string): Promise<Uri | undefined> {
+		return this._rootFileSystem.toVSCode(file);
+	}
+
+	public run(): Promise<number> {
+		return this._process.run();
+	}
+
+	public terminate(): Promise<number> {
+		return this._process.terminate();
+	}
+}
+
 namespace Python {
 
 	type Configuration = { location: Uri, bits: Uri, lib: VSCodeFileSystemDescriptor | ExtensionLocationDescriptor };
@@ -81,7 +131,7 @@ namespace Python {
 		return Wasm.api().createProcess('python', module, options);
 	}
 
-	export async function createDebugProcess(stdio: Stdio, file: Uri, terminator?: string): Promise<{ process: WasmProcess; rootFileSystem: RootFileSystem, input: Writable; output: Readable }> {
+	export async function createDebugProcess(file: Uri, terminal?: WasmPseudoterminal, terminator?: string): Promise<DebugProcess> {
 		const wasm = Wasm.api();
 		const [module, configuration] = await Promise.all([getModule(), resolveConfiguration()]);
 		const debugFileSystem: MemoryFileSystem = await wasm.createMemoryFileSystem();
@@ -96,8 +146,23 @@ namespace Python {
 				return RAL().TextEncoder.create().encode(content);
 			}
 		});
-		const input = debugFileSystem.createWritable('input');
-		const output = debugFileSystem.createReadable('output');
+
+		let stdio: Stdio;
+		if (terminal !== undefined) {
+			stdio = terminal.stdio;
+		} else {
+			const input = wasm.createWritable();
+			const out = wasm.createReadable();
+			const err = wasm.createReadable();
+			stdio = {
+				in: { kind: 'pipeIn' as const, pipe: input },
+				out: { kind: 'pipeOut' as const, pipe: out },
+				err: { kind: 'pipeOut' as const, pipe: err }
+			};
+		}
+
+		const dbgin = debugFileSystem.createWritable('input');
+		const dbgout = debugFileSystem.createReadable('output');
 
 		const mountPoints: MountPointDescriptor[] = [
 			{ kind: 'workspaceFolder' },
@@ -114,7 +179,7 @@ namespace Python {
 			args: ['-B', '-X', 'utf8', '/$debug/main.py']
 		};
 		const process = await Wasm.api().createProcess('python', module, options);
-		return { process, rootFileSystem, input, output };
+		return new DebugProcess(process, rootFileSystem, dbgin, dbgout);
 	}
 
 	function context(): ExtensionContext {

@@ -26,14 +26,23 @@
 	],
 	"cSpell.words": [
 		"badf",
+		"dbgin",
+		"dbgout",
 		"debugprotocol",
 		"fdflags",
 		"fdstat",
 		"filestat",
+		"hasattr",
 		"inval",
 		"lookupflags",
 		"notdir",
 		"oflags",
-		"Pseudoterminal"
+		"opendbgin",
+		"opendbgout",
+		"overridable",
+		"Pseudoterminal",
+		"PYTHONPATH",
+		"traceback",
+		"tsbuild"
 	]
 }

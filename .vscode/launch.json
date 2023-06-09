@@ -7,14 +7,16 @@
 		{
 			"args": [
 				"--extensionDevelopmentPath=${workspaceFolder}",
-				"--extensionDevelopmentPath=${workspaceFolder}/../../vscode-wasm/wasm-wasi-core"
+				"--extensionDevelopmentPath=${workspaceFolder}/../../vscode-wasm/wasm-wasi-core",
+				"--extensionDevelopmentPath=${workspaceFolder}/../../vscode-wasm/webshell",
 			],
 			"name": "Launch in Desktop - Node ExtHost",
 			"outFiles": [
-				"${workspaceFolder}/out/desktop/**/*.js",
-				"${workspaceFolder}/../../vscode-wasm/wasm-wasi-core/dist/**/*.js"
+				"${workspaceFolder}/dist/desktop/**/*.js",
+				"${workspaceFolder}/../../vscode-wasm/wasm-wasi-core/dist/**/*.js",
+				"${workspaceFolder}/../../vscode-wasm/webshell/dist/**/*.js"
 			],
-			"preLaunchTask": "npm: esbuild",
+			"preLaunchTask": "npm: symlink:desktop",
 			"request": "launch",
 			"type": "extensionHost"
 		},

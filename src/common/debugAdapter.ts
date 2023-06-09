@@ -10,7 +10,7 @@ import { WasmPseudoterminal, WasmProcess, Stdio, Wasm, RootFileSystem, Writable,
 import RAL from './ral';
 import { Response } from './debugMessages';
 import { Terminals } from './terminals';
-import Python from './python';
+import Python, { DebugProcess } from './python';
 
 const StackFrameRegex = /^[>,\s]+(.+)\((\d+)\)(.*)\(\)/;
 const TracebackFrameRegex = /^\s+File "(.+)", line (\d+)/;
@@ -38,9 +38,7 @@ export type DebugProperties = {
 };
 
 export class DebugAdapter implements vscode.DebugAdapter {
-	private _process: WasmProcess | undefined;
-	private _rootFileSystem: RootFileSystem | undefined;
-	private _debugPipes: { input: Writable, output: Readable } | undefined;
+	private _process: Promise<DebugProcess> | undefined;
 	private _cwd: string | undefined;
 	private _sequence = 0;
 	private _outputChain: Promise<string> | undefined;
@@ -180,17 +178,18 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		}
 	}
 
-	private _terminate() {
+	private async _terminate(): Promise<number> {
 		if (this._process !== undefined) {
 			this._writetostdin('exit\n');
 			const process = this._process;
 			this._process = undefined;
-			void process.terminate();
+			return (await process).terminate();
 		}
+		return Promise.resolve(0);
 	}
 
-	private _handleDisconnect(message: DebugProtocol.DisconnectRequest) {
-		this._terminate();
+	private async _handleDisconnect(message: DebugProtocol.DisconnectRequest): Promise<void> {
+		await this._terminate();
 		this._sendToUserConsole(`Process exited.`);
 		this._sendResponse<DebugProtocol.DisconnectResponse>({
 			type: 'response',
@@ -249,7 +248,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	private async _parseStoppedOutput(output: string, runcommand?: string) {
 		// We should be stopped now. Depends upon why
 		if (output.includes(ProgramFinishedOutput)) {
-			this._handleProgramFinished(output);
+			void this._handleProgramFinished(output);
 		} else if (output.includes(UncaughtExceptionOutput) || SyntaxErrorOutput.test(output)) {
 			await this._handleUncaughtException(output);
 		} else if (output.includes('--Return--')) {
@@ -264,18 +263,19 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	private _waitForPdbOutput(mode: 'run' | 'command', generator: () => void): Promise<string> {
 		const current = this._outputChain ?? Promise.resolve('');
 		this._outputChain = current.then(() => {
-			return new Promise<string>((resolve, reject) => {
+			return new Promise<string>(async (resolve, reject) => {
 				let output = '';
+				const process = await this._process;
 				const decoder = RAL().TextDecoder.create();
-				this._debugPipes?.output.pause();
-				const disposable = this._debugPipes?.output.onData((chunk) => {
+				process?.dbgout.pause();
+				const disposable = process?.dbgout.onData((chunk) => {
 					let str = decoder.decode(chunk);
 					// In command mode, remove carriage returns. Makes handling simpler
 					str = mode === 'command' ? str.replace(/\r/g, '') : str;
 
 					// We are finished when the output ends with `(Pdb) `
 					if (str.endsWith(PdbTerminator)) {
-						this._debugPipes?.output.pause();
+						process?.dbgout.pause();
 						disposable?.dispose();
 						output = `${output}${str.slice(0, str.length - PdbTerminator.length)}`;
 						this._stopped = true;
@@ -288,7 +288,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 						output = `${output}${str}`;
 					}
 				});
-				this._debugPipes?.output.resume();
+				process?.dbgout.resume();
 				this._stopped = false;
 				generator();
 			});
@@ -297,11 +297,11 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private async _translateToWorkspacePath(wasmPath: string): Promise<string> {
-		if (this._rootFileSystem === undefined) {
-			throw new Error('No root file system');
+		if (this._process === undefined) {
+			throw new Error('No debug process');
 		}
 		const normalized = wasmPath.replace(/\\/g, '/');
-		const result = await this._rootFileSystem.toVSCode(normalized);
+		const result = await (await this._process).toVSCode(normalized);
 		return result !== undefined ? result.toString() : normalized;
 	}
 
@@ -319,11 +319,11 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private async _translateFromWorkspacePath(workspacePath: string): Promise<string> {
-		if (this._rootFileSystem === undefined) {
-			throw new Error('No root file system');
+		if (this._process === undefined) {
+			throw new Error('No debug process');
 		}
 		const normalized = this._convertToUriString(workspacePath.replace(/\\/g, '/'));
-		const result = await this._rootFileSystem.toWasm(vscode.Uri.parse(workspacePath));
+		const result = await (await this._process).toWasm(vscode.Uri.parse(workspacePath));
 		return result !== undefined ? result.toString() : normalized;
 	}
 
@@ -488,8 +488,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		}
 	}
 
-	private _sendTerminated() {
-		this._terminate();
+	private async _sendTerminated(): Promise<void> {
+		await this._terminate();
 		this._sendEvent<DebugProtocol.TerminatedEvent>({
 			type: 'event',
 			event: 'terminated',
@@ -497,8 +497,8 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		});
 	}
 
-	private _handleTerminate(message: DebugProtocol.TerminateRequest) {
-		this._sendTerminated();
+	private async _handleTerminate(message: DebugProtocol.TerminateRequest): Promise<void> {
+		await this._sendTerminated();
 		this._sendResponse<DebugProtocol.TerminateResponse>({
 			success: true,
 			command: message.command,
@@ -571,13 +571,13 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		return root ? file.toLowerCase().startsWith(root) : false;
 	}
 
-	private _handleProgramFinished(output: string) {
+	private async _handleProgramFinished(output: string): Promise<void> {
 		const finishedIndex = output.indexOf(ProgramFinishedOutput);
 		if (finishedIndex >= 0) {
 			this._sendToUserConsole(output.slice(0, finishedIndex));
 		}
 		// Program finished. Disconnect
-		this._sendTerminated();
+		await this._sendTerminated();
 	}
 
 	private async _handleUncaughtException(output: string) {
@@ -650,10 +650,10 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		}
 	}
 
-	private _executerun(runcommand: string) {
+	private async _executerun(runcommand: string) {
 		// If at an unhandled exception, just terminate (user hit go after the exception happened)
 		if (this._uncaughtException) {
-			this._sendTerminated();
+			await this._sendTerminated();
 			return;
 		}
 
@@ -687,12 +687,13 @@ export class DebugAdapter implements vscode.DebugAdapter {
 		let terminal: WasmPseudoterminal | undefined;
 		if (uuid !== undefined) {
 			terminal =  Terminals.getBusyTerminal(uuid)!;
-			stdio = terminal.stdio;
-		} else {
-			const input = wasm.createWritable();
-			const out = wasm.createReadable();
+		}
+
+		this._process = Python.createDebugProcess(vscode.Uri.parse(args.program), terminal, PdbTerminator);
+		const process = await this._process;
+		if (process.stdout !== undefined && process.stderr !== undefined) {
 			const decoder = RAL().TextDecoder.create();
-			out.onData((data) => {
+			process.stdout.onData((data) => {
 				this._sendEvent<DebugProtocol.OutputEvent>({
 					type: 'event',
 					seq: this._sequence++,
@@ -703,8 +704,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 					}
 				});
 			});
-			const err = wasm.createReadable();
-			err.onData((data) => {
+			process.stderr.onData((data) => {
 				this._sendEvent<DebugProtocol.OutputEvent>({
 					type: 'event',
 					seq: this._sequence++,
@@ -715,29 +715,16 @@ export class DebugAdapter implements vscode.DebugAdapter {
 					}
 				});
 			});
-
-			stdio = {
-				in: { kind: 'pipeIn' as const, pipe: input },
-				out: { kind: 'pipeOut' as const, pipe: out },
-				err: { kind: 'pipeOut' as const, pipe: err }
-			};
 		}
-
-		const processInfo = await Python.createDebugProcess(stdio, vscode.Uri.parse(args.program), PdbTerminator);
-		this._process = processInfo.process;
-		this._rootFileSystem = processInfo.rootFileSystem;
-		this._debugPipes = { input: processInfo.input, output: processInfo.output };
 
 		// Wait for debuggee to emit first bit of output before continuing. First bit of output may be an exception that the program crashed
 		const launchOutput = await this._waitForPdbOutput('command', () => {
-			this._process!.run().
+			process!.run().
 				catch((error) => {
 					RAL().console.error(error);
 				}).finally(() => {
 					this._process = undefined;
-					this._rootFileSystem = undefined;
-					this._debugPipes = undefined;
-					this._sendTerminated();
+					void this._sendTerminated();
 					if (terminal !== undefined) {
 						Terminals.releaseExecutionTerminal(terminal, false);
 					}
@@ -906,7 +893,7 @@ export class DebugAdapter implements vscode.DebugAdapter {
 	}
 
 	private _writetostdin(text: string) {
-		void this._debugPipes?.input.write(text);
+		void this._process?.then(process => process?.dbgin.write(text)) ;
 	}
 
 	private async _executecommand(command: string): Promise<string> {

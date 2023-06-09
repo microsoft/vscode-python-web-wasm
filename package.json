@@ -49,6 +49,7 @@
 	"scripts": {
 		"vscode:prepublish": "npm run all",
 		"symlink:vscode-wasm": "node ./bin/symlink",
+		"symlink:desktop": "node ./bin/symlink-desktop",
 		"compile:tsc": "tsc -b ./tsconfig.json",
 		"esbuild": "node ./bin/esbuild.mjs",
 		"watch:tsc": "tsc -b ./tsconfig.json -w",
