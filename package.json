@@ -27,7 +27,7 @@
 	"dependencies": {
 		"@types/path-browserify": "^1.0.0",
 		"@vscode/debugprotocol": "^1.59.0",
-		"@vscode/wasm-wasi": "0.11.0-next.0",
+		"@vscode/wasm-wasi": "0.13.0-pre.1",
 		"path-browserify": "^1.0.1",
 		"uuid": "^9.0.0"
 	},
