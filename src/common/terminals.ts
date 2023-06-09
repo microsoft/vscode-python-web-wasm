@@ -90,7 +90,7 @@ export namespace Terminals {
 			terminal.show(preserveFocus);
 		}
 		if (header !== undefined) {
-			pty.write(formatMessageForTerminal(header, false, true));
+			void pty.write(formatMessageForTerminal(header, false, true));
 		}
 		const info: TerminalBusyInfo = [terminal, pty, uuid.v4()];
 		busyTerminals.set(pty, info);
