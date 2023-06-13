@@ -5,9 +5,6 @@ trigger:
     include:
       - main
       - release/*
-  tags:
-    include:
-      - release/*
 pr: none
 
 resources:
@@ -18,8 +15,19 @@ resources:
       ref: main
       endpoint: Monaco
 
+parameters:
+  - name: publishExtension
+    displayName: 🚀 Publish Extension
+    type: boolean
+    default: false
+
 extends:
   template: azure-pipelines/extension/stable.yml@templates
   parameters:
     buildSteps:
       - template: templates/compile.yml
+
+    ghCreateTag: true
+    ghTagPrefix: release/
+
+    publishExtension: ${{ parameters.publishExtension }}
