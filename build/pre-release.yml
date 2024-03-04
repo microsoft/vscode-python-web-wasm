@@ -27,3 +27,5 @@ extends:
     ghTagPrefix: pre-release/
 
     publishExtension: ${{ parameters.publishExtension }}
+
+    policheckExclusionsFile: '$(Build.SourcesDirectory)/PoliCheckExclusions.xml'
