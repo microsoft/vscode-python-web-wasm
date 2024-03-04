@@ -44,3 +44,5 @@ extends:
           - 'dirkb@microsoft.com'
 
     publishExtension: ${{ parameters.publishExtension }}
+
+    policheckExclusionsFile: '$(Build.SourcesDirectory)/PoliCheckExclusions.xml'
