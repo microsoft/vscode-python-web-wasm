@@ -26,6 +26,12 @@ extends:
     ghCreateTag: true
     ghTagPrefix: pre-release/
 
+    tsa:
+      config:
+        areaPath: 'Visual Studio Code Web Extensions'
+        serviceTreeID: '1788a767-5861-45fb-973b-c686b67c5541'
+      enabled: true
+
     publishExtension: ${{ parameters.publishExtension }}
 
     policheckExclusionsFile: '$(Build.SourcesDirectory)/PoliCheckExclusions.xml'
