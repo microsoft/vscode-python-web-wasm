@@ -28,28 +28,28 @@
 		"ms-vscode.remote-repositories"
 	],
 	"dependencies": {
-		"@types/path-browserify": "^1.0.0",
-		"@vscode/debugprotocol": "^1.59.0",
+		"@types/path-browserify": "^1.0.3",
+		"@vscode/debugprotocol": "^1.68.0",
 		"@vscode/sync-api-service": "0.9.0",
 		"@vscode/wasm-wasi": "0.9.0",
-		"vscode-uri": "^3.0.7",
+		"vscode-uri": "^3.1.0",
 		"path-browserify": "^1.0.1",
-		"uuid": "^9.0.0"
+		"uuid": "^11.1.0"
 	},
 	"devDependencies": {
 		"@types/node": "^16.11.57",
 		"@types/vscode": "1.75.0",
-		"@types/uuid": "^9.0.0",
+		"@types/uuid": "^10.0.0",
 		"@typescript-eslint/eslint-plugin": "^5.51.0",
 		"@typescript-eslint/parser": "^5.51.0",
-		"esbuild": "^0.25.0",
+		"esbuild": "^0.25.5",
 		"eslint": "^8.33.0",
-		"typescript": "4.9.5",
-		"serve": "^14.2.0",
+		"typescript": "5.8.3",
+		"serve": "^14.2.4",
 		"localtunnel": "^2.0.2",
-		"shelljs": "^0.8.5",
-		"rimraf": "^4.1.2",
-		"@vscode/vsce": "^2.17.0"
+		"shelljs": "^0.10.0",
+		"rimraf": "^6.0.1",
+		"@vscode/vsce": "^3.5.0"
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run all",
