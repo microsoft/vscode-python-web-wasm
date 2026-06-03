@@ -3,8 +3,6 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import * as uuid from 'uuid';
-
 import { Event, EventEmitter, Uri } from 'vscode';
 import { CharacterDeviceDriver, FileDescriptorDescription, RAL } from '@vscode/sync-api-service';
 
@@ -20,7 +18,7 @@ export class DebugConsole implements CharacterDeviceDriver {
 	private readonly _decoder: RAL.TextDecoder;
 
 	constructor() {
-		this.uri= Uri.from({ scheme: 'console', authority: uuid.v4() });
+		this.uri = Uri.from({ scheme: 'console', authority: RAL().crypto.randomUUID() });
 		this.fileDescriptor = {
 			kind: 'console',
 			uri: this.uri

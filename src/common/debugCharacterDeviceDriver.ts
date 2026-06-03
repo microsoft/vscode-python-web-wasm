@@ -4,8 +4,6 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import * as uuid from 'uuid';
-
 import { Uri, Event, EventEmitter } from 'vscode';
 import { CharacterDeviceDriver, FileDescriptorDescription, RAL as SyncRal } from '@vscode/sync-api-service';
 
@@ -27,7 +25,7 @@ export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
 	private _inputEmitter = new EventEmitter<void>();
 	private _inputQueue: string[] = [];
 	constructor() {
-		this.uri = Uri.from({ scheme: 'debug', authority: uuid.v4()});
+		this.uri = Uri.from({ scheme: 'debug', authority: SyncRal().crypto.randomUUID() });
 		this.fileDescriptor = {
 			kind: 'fileSystem',
 			uri: this.uri,

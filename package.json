@@ -27,19 +27,25 @@
 	"extensionDependencies": [
 		"ms-vscode.remote-repositories"
 	],
+	"overrides": {
+		"@vscode/wasm-wasi": {
+			"@vscode/sync-api-client": "0.9.1"
+		},
+		"@vscode/sync-api-client": {
+			"@vscode/sync-api-common": "0.9.1"
+		}
+	},
 	"dependencies": {
 		"@types/path-browserify": "^1.0.3",
 		"@vscode/debugprotocol": "^1.68.0",
 		"@vscode/sync-api-service": "0.9.1",
 		"@vscode/wasm-wasi": "0.9.0",
 		"vscode-uri": "^3.1.0",
-		"path-browserify": "^1.0.1",
-		"uuid": "^14.0.0"
+		"path-browserify": "^1.0.1"
 	},
 	"devDependencies": {
-		"@types/node": "^16.11.57",
-		"@types/vscode": "1.75.0",
-		"@types/uuid": "^10.0.0",
+		"@types/node": "^24.12.4",
+		"@types/vscode": "1.120.0",
 		"@typescript-eslint/eslint-plugin": "^5.51.0",
 		"@typescript-eslint/parser": "^5.51.0",
 		"esbuild": "^0.25.5",
@@ -48,8 +54,8 @@
 		"serve": "^14.2.6",
 		"localtunnel": "^2.0.2",
 		"shelljs": "^0.10.0",
-		"rimraf": "^6.0.1",
-		"@vscode/vsce": "^3.5.0"
+		"rimraf": "^6.1.3",
+		"@vscode/vsce": "^3.9.1"
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run all",
