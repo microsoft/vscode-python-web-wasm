@@ -6,10 +6,9 @@
 
 	"task.allowAutomaticTasks": "on",
 
-	"typescript.tsdk": "./node_modules/typescript/lib",
-	"typescript.tsc.autoDetect": "off",
-	"typescript.tsserver.trace": "off",
-	"typescript.tsserver.log": "off",
+	"js/ts.tsdk.path": "./node_modules/typescript/lib",
+	"js/ts.tsc.autoDetect": "off",
+	"js/ts.tsserver.log": "off",
 
 	"editor.codeActionsOnSave": {
 		"source.fixAll.eslint": "explicit"
