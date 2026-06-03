@@ -18,7 +18,7 @@ export class DebugConsole implements CharacterDeviceDriver {
 	private readonly _decoder: RAL.TextDecoder;
 
 	constructor() {
-		this.uri= Uri.from({ scheme: 'console', authority: Math.random().toString(36).substring(2, 15) });
+		this.uri= Uri.from({ scheme: 'console', authority: RAL().crypto.randomUUID() });
 		this.fileDescriptor = {
 			kind: 'console',
 			uri: this.uri

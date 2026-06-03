@@ -25,7 +25,7 @@ export class DebugCharacterDeviceDriver implements CharacterDeviceDriver {
 	private _inputEmitter = new EventEmitter<void>();
 	private _inputQueue: string[] = [];
 	constructor() {
-		this.uri = Uri.from({ scheme: 'debug', authority: Math.random().toString(36).substring(2, 15) });
+		this.uri = Uri.from({ scheme: 'debug', authority: SyncRal().crypto.randomUUID() });
 		this.fileDescriptor = {
 			kind: 'fileSystem',
 			uri: this.uri,
