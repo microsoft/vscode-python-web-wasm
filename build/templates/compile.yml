@@ -2,7 +2,13 @@ steps:
   - script: |
       npm ci
     displayName: "Install dependencies"
+    target:
+      commands: restricted
+      settableVariables: none
 
   - script: |
       npm run all
     displayName: "Lint & Compile"
+    target:
+      commands: restricted
+      settableVariables: none
